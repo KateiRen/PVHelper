@@ -186,7 +186,17 @@ if len(bundles) > 0:
     df_full = pd.DataFrame()
     df_full['datetime'] = bundles[0].df['datetime']
     for bundle in bundles:
-        df_full[bundle.description + " (kW)"] = bundle.df['kW']
+        # Prüfe, ob datetime-Spalten identisch sind
+        if not df_full['datetime'].equals(bundle.df['datetime']):
+            st.warning(f"Achtung: datetime-Spalte von '{bundle.description}' unterscheidet sich vom ersten Bundle. Merge wird durchgeführt.")
+            # Verwende merge statt direkte Zuweisung für sichere Alignment
+            temp_df = pd.DataFrame({
+                'datetime': bundle.df['datetime'],
+                bundle.description + " (kW)": bundle.df['kW']
+            })
+            df_full = pd.merge(df_full, temp_df, on="datetime", how="outer")
+        else:
+            df_full[bundle.description + " (kW)"] = bundle.df['kW']
 
     if opt_show_dataframe: # type: ignore
         st.markdown("## Kombiniertes Dataframe")
@@ -202,6 +212,8 @@ if len(bundles) > 0:
         if last_dfs:
             last_df = pd.concat(last_dfs)
             last_sum = last_df.groupby("datetime")["kW"].sum().reset_index()
+            # Sortiere nach datetime um korrekte Reihenfolge sicherzustellen
+            last_sum = last_sum.sort_values("datetime").reset_index(drop=True)
             last_bundle = Datenbundle(
                 df=last_sum,
                 description="Last",
@@ -215,6 +227,8 @@ if len(bundles) > 0:
         if erzeugung_dfs:
             erzeugung_df = pd.concat(erzeugung_dfs)
             erzeugung_sum = erzeugung_df.groupby("datetime")["kW"].sum().reset_index()
+            # Sortiere nach datetime um korrekte Reihenfolge sicherzustellen
+            erzeugung_sum = erzeugung_sum.sort_values("datetime").reset_index(drop=True)
             erzeugung_bundle = Datenbundle(
                 df=erzeugung_sum,
                 description="Erzeugung",
@@ -288,7 +302,8 @@ if len(bundles) > 0:
 
             for col in merged.columns:
                 if col != "datetime" and col not in df_full.columns:
-                    df_full[col] = merged[col]
+                    # Merge df_full mit merged basierend auf datetime um korrekte Ausrichtung zu gewährleisten
+                    df_full = pd.merge(df_full, merged[["datetime", col]], on="datetime", how="left")
 
             timer("Zeit nach dem Kombinieren der df mit Berechnungen", opt_timer)
             if opt_show_dataframe: # type: ignore
