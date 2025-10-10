@@ -201,13 +201,11 @@ if len(bundles) > 0:
 
         if last_dfs:
             last_df = pd.concat(last_dfs)
-            last_sum = last_df.groupby("datetime")["Wert (kW)"].sum().reset_index()
+            last_sum = last_df.groupby("datetime")["kW"].sum().reset_index()
             last_bundle = Datenbundle(
                 df=last_sum,
                 description="Last",
                 interval=0,
-                show_dataframe=False,
-                show_dataframe_infos=False,
                 is_last=True,
                 is_erzeugung=False,
                 farbe="#1f77b4"
@@ -216,13 +214,11 @@ if len(bundles) > 0:
 
         if erzeugung_dfs:
             erzeugung_df = pd.concat(erzeugung_dfs)
-            erzeugung_sum = erzeugung_df.groupby("datetime")["Wert (kW)"].sum().reset_index()
+            erzeugung_sum = erzeugung_df.groupby("datetime")["kW"].sum().reset_index()
             erzeugung_bundle = Datenbundle(
                 df=erzeugung_sum,
                 description="Erzeugung",
                 interval=0,
-                show_dataframe=False,
-                show_dataframe_infos=False,
                 is_last=False,
                 is_erzeugung=True,
                 farbe="#ff7f0e"
@@ -243,15 +239,15 @@ if len(bundles) > 0:
             )
             
             # Eigenverbrauch = min(Erzeugung, Last)
-            merged["Eigenverbrauch (kW)"] = merged[["Wert (kW)_last", "Wert (kW)_erzeugung"]].min(axis=1)
+            merged["Eigenverbrauch (kW)"] = merged[["kW_last", "kW_erzeugung"]].min(axis=1)
             # Einspeisung = Erzeugung - Eigenverbrauch
-            merged["Einspeisung (kW)"] = merged["Wert (kW)_erzeugung"] - merged["Eigenverbrauch (kW)"]
+            merged["Einspeisung (kW)"] = merged["kW_erzeugung"] - merged["Eigenverbrauch (kW)"]
             # Fremdbezug = Last - Eigenverbrauch
-            merged["Fremdbezug (kW)"] = merged["Wert (kW)_last"] - merged["Eigenverbrauch (kW)"]
+            merged["Fremdbezug (kW)"] = merged["kW_last"] - merged["Eigenverbrauch (kW)"]
 
             if opt_show_dataframe: # type: ignore
                 st.markdown("### Eigenverbrauch und Einspeisung")
-                st.dataframe(merged[["datetime", "Wert (kW)_last", "Wert (kW)_erzeugung", "Eigenverbrauch (kW)", "Einspeisung (kW)", "Fremdbezug (kW)"]])
+                st.dataframe(merged[["datetime", "kW_last", "kW_erzeugung", "Eigenverbrauch (kW)", "Einspeisung (kW)", "Fremdbezug (kW)"]])
             timer("Zeit nach dem Berechnen von Eigenverbrauch und Darstellung des Dataframes", opt_timer)
 
             col1, col2, col3 = st.columns(3)

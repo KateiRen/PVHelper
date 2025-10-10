@@ -4,15 +4,12 @@ PV Reference Data Visualization Helper
 Shows interactive diagrams for PV reference data using JSON configuration files.
 """
 import os
-import json
-from datetime import datetime, timedelta
+from datetime import datetime
 import pandas as pd
 import plotly.graph_objects as go
-import plotly.express as px
 from plotly.subplots import make_subplots
 import streamlit as st
-import numpy as np
-from helper import load_and_transform_data, timer
+from helper import load_and_transform_data
 
 def get_kw_column_name(df):
     """Find the primary kW column dynamically"""
@@ -36,9 +33,9 @@ def load_pv_data(config_path):
         bundle = load_and_transform_data(config_path, options)
         if bundle is not None:
             return bundle.df, bundle.description
-        else:
-            return None, None
-    except Exception as e:
+        return None, None
+    
+    except (FileNotFoundError, ValueError, IOError) as e:
         st.error(f"Error loading file: {e}")
         return None, None
 
@@ -177,6 +174,9 @@ def create_heatmap(df, description):
 
 def create_statistics_table(df, description, interval_minutes=15):
     """Create statistics table showing both kW and kWh metrics.""" 
+    if description is None:
+        # get rid of the warning
+        description = "PV System"
     # Get the kW column name dynamically
     kw_col = get_kw_column_name(df)
     if not kw_col:

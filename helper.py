@@ -365,8 +365,10 @@ def load_and_transform_data(config_path: str, options: dict) -> Datenbundle:
     if settings.get('offset', 0) != 0:
         offset = settings['offset']
         st.warning(f"Daten werden um {offset} Intervalle verschoben")
+        # Nur die Datenspalte verschieben, Datum-Zeit-Spalte bleibt unverändert
         df[settings['Datenspalte']] = df[settings['Datenspalte']].shift(offset)
-        df = df.dropna().reset_index(drop=True)
+        # Leere (NaN) Werte in der Datenspalte mit 0 auffüllen, Datum-Zeit bleibt erhalten
+        df[settings['Datenspalte']].fillna(0, inplace=True)
 
 
     jobs = [create_datetime_index,
@@ -404,8 +406,8 @@ def load_and_transform_data(config_path: str, options: dict) -> Datenbundle:
         df=df,
         description=settings.get('Name', ''),
         interval=settings['Intervall'],
-        is_last=settings.get('is_last', False),
-        is_erzeugung=settings.get('is_erzeugung', False),
+        is_last=settings['Typ']== "Last",
+        is_erzeugung=settings['Typ']=="Erzeugung",
         farbe=settings.get('Farbe', "#1f77b4")
     )
     return datenbundle
