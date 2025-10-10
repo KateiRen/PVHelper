@@ -129,25 +129,6 @@ def calculate_kwh_from_kw(df: pd.DataFrame, interval_minutes: int, kw_column: st
     return df[kw_column] * hours_per_interval
 
 
-def check_and_convert_to_kwh(df: pd.DataFrame, settings: dict) -> pd.DataFrame:
-    """
-    Legacy function for backward compatibility.
-    Now calls process_power_data and adds kWh calculation.
-    """
-    df = process_power_data(df, settings)
-    
-    # Find the kW column that was created
-    kw_column = get_unique_kw_column_name(df.drop(columns=[col for col in df.columns if col.startswith('Wert-kW')]))
-    if kw_column not in df.columns:
-        # Find the actual kW column that was created
-        kw_columns = [col for col in df.columns if col.startswith('Wert-kW')]
-        if kw_columns:
-            kw_column = kw_columns[0]  # Use the first one found
-    
-    # Also create kWh column for backward compatibility
-    kwh_values = calculate_kwh_from_kw(df, settings['Intervall'], kw_column)
-    df["Wert (kWh)"] = kwh_values
-    return df
 
 
 def check_and_remove_leap_day(df: pd.DataFrame, settings: dict, options: dict) -> pd.DataFrame:
@@ -383,65 +364,6 @@ def timer(description: str="", opt_timer: bool=False):
         #return f"{elapsed:.2f}"
 
 
-def show_kwh_totals(df: pd.DataFrame, interval_minutes: int = 15, title: str = "kWh Totals") -> None:
-    """
-    Display kWh totals calculated from kW data for user information.
-    Args:
-        df: DataFrame with kW power data
-        interval_minutes: Time interval in minutes
-        title: Title for the display section
-    """
-    # Find the kW column dynamically
-    kw_columns = [col for col in df.columns if col.startswith('Wert-kW')]
-    if kw_columns:
-        kw_column = kw_columns[0]
-    elif "Wert (kW)" in df.columns:
-        kw_column = "Wert (kW)"
-    else:
-        st.warning("Keine kW-Spalte gefunden. kWh Totals können nicht berechnet werden.")
-        return
-    
-    kwh_total = calculate_kwh_from_kw(df, interval_minutes, kw_column).sum()
-    peak_kw = df[kw_column].max()
-    
-    st.markdown(f"### {title}")
-    st.markdown(f"- **Gesamtertrag**: {kwh_total:.2f} kWh")
-    st.markdown(f"- **Spitzenleistung**: {peak_kw:.2f} kW")
-    if kwh_total > 0 and peak_kw > 0:
-        capacity_factor = kwh_total / (peak_kw * len(df) * interval_minutes / 60) * 100
-        st.markdown(f"- **Kapazitätsfaktor**: {capacity_factor:.1f}%")
-
-
-@st.cache_data
-def convert_to_kwh(series, unit, interval_minutes):
-    """Convert a pandas Series to kWh based on the unit and interval."""
-    if unit == "Wh":
-        return series / 1000
-    elif unit == "W":
-        hours = interval_minutes / 60
-        return (series / 1000) * hours
-    elif unit == "kW":
-        hours = interval_minutes / 60
-        return series * hours
-    elif unit == "MW":
-        hours = interval_minutes / 60
-        return series * 1000 * hours
-    elif unit == "MWh":
-        return series * 1000
-    elif unit == "kWh":
-        return series
-    else:
-        st.warning(f"Unbekannte Einheit '{unit}'. Keine Umrechnung durchgeführt.")
-        return series
-
-
-def scale_to_target(series: pd.Series) -> pd.Series:
-    current_sum = series.sum()
-    if current_sum == 0 or pd.isna(current_sum):
-        return series
-    factor = target_sum / current_sum
-    return series * factor
-
 
 def load_and_transform_data(config_path: str, options: dict) -> Datenbundle:
     """
@@ -470,6 +392,13 @@ def load_and_transform_data(config_path: str, options: dict) -> Datenbundle:
         st.warning("Daten werden invertiert (negativ)")
         df[settings['Datenspalte']] = -df[settings['Datenspalte']]
     
+    if settings.get('offset', 0) != 0:
+        offset = settings['offset']
+        st.warning(f"Daten werden um {offset} Intervalle verschoben")
+        df[settings['Datenspalte']] = df[settings['Datenspalte']].shift(offset)
+        df = df.dropna().reset_index(drop=True)
+
+
     jobs = [create_datetime_index,
             check_and_fix_right_interval, 
             check_and_remove_leap_day,
