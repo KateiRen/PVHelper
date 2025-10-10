@@ -161,36 +161,6 @@ def check_and_correct_continuity(df: pd.DataFrame, settings: dict, options: dict
     return df
 
 
-    # Prüfe, ob die datetime-Spalte des df mit der von temp_df übereinstimmt
-    if not df['datetime'].equals(temp_df['datetime']):
-        st.warning("Die datetime-Spalte des DataFrames stimmt nicht mit der erwarteten Zeitreihe überein.")
-        # Finde Unterschiede
-        df_set = set(df['datetime'])
-        temp_set = set(temp_df['datetime'])
-        fehlende_im_df = sorted(list(temp_set - df_set))
-        zusätzliche_im_df = sorted(list(df_set - temp_set))
-        if fehlende_im_df:
-            st.info(f"Im DataFrame fehlen {len(fehlende_im_df)} Zeitstempel. Beispiel: {[dt.strftime('%Y-%m-%d %H:%M:%S') for dt in fehlende_im_df[:5]]}")
-        if zusätzliche_im_df:
-            st.info(f"Im DataFrame sind {len(zusätzliche_im_df)} zusätzliche Zeitstempel. Beispiel: {[dt.strftime('%Y-%m-%d %H:%M:%S') for dt in zusätzliche_im_df[:5]]}")
-    if not df['datetime'].equals(temp_df['datetime']):
-        st.warning("Die datetime-Spalte des DataFrames stimmt nicht mit der erwarteten Zeitreihe überein.")
-    return df
-    expected_range = pd.date_range(
-        start=df['datetime'].min(),
-        end=df['datetime'].max(),
-        freq=f'{interval}min'
-    )
-    missing = set(expected_range) - set(df['datetime'])
-    if missing:
-        st.warning(f"{len(missing)} fehlende Zeitstempel erkannt (Lücken in der Zeitreihe).")
-        # Zeige einige Beispiele der fehlenden Zeitstempel (Datum und Uhrzeit)
-        missing_sorted = sorted(list(missing))
-        st.info(f"Beispiel fehlende Zeitstempel: {[dt.strftime('%Y-%m-%d %H:%M:%S') for dt in missing_sorted[:5]]}")
-
-
-    return df
-
 def scale_dataframe(df: pd.DataFrame, settings: dict, options: dict) -> pd.DataFrame:
   
     # Calculate current kWh total for scaling reference
