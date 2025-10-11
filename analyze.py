@@ -102,6 +102,11 @@ with st.sidebar.expander("🌞 PV Simulation"):
     if pv_total > 0:
         status_text = "✅ Aktiviert" if enable_pv_simulation else "⚫ Deaktiviert"
         st.info(f"Gesamt: {pv_total:.1f} kWp ({status_text})")
+    
+    # Download-Button für PV-Simulationsdaten
+    if enable_pv_simulation and pv_total > 0:
+        if st.button("📥 PV-Daten als CSV/JSON speichern", help="Speichert die generierte PV-Simulation im Projektordner"):
+            st.session_state.export_pv_data = True
 
 st.sidebar.markdown('---')
 st.sidebar.subheader("🛠️ Optionen")
@@ -161,6 +166,61 @@ if options["pv_simulation"]["enabled"] and options["pv_simulation"]["total"] > 0
 
         bundles.append(pv_bundle)
         timer("PV Simulationsdaten wurden geladen und skaliert", opt_timer)
+        
+        # Export der PV-Simulationsdaten, wenn gewünscht
+        if st.session_state.get("export_pv_data", False):
+            # CSV Export
+            pv_filename = f"PV_Simulation_{options['pv_simulation']['west']:.1f}W_{options['pv_simulation']['sued']:.1f}S_{options['pv_simulation']['ost']:.1f}O"
+            csv_filename = f"{pv_filename}.csv"
+            json_filename = f"{pv_filename}.json"
+            
+            # Stelle sicher, dass der data-Unterordner existiert
+            data_path = os.path.join(project_path, "data") # type: ignore
+            os.makedirs(data_path, exist_ok=True)
+            
+            # CSV-Datei im data-Unterordner speichern
+            csv_path = os.path.join(data_path, csv_filename)
+            df.to_csv(csv_path, index=False, encoding="utf-8", sep=";", decimal=",")
+            
+            # Pfad für JSON-Datei (nach dem Muster: projects\\<projektordner>\\data\\<csv>)
+            json_csv_path = f"projects\\\\{selected_project}\\\\data\\\\{csv_filename}"
+            
+            # JSON-Konfigurationsdatei erstellen
+            json_config = {
+                "Name": f"PV Simulation ({options['pv_simulation']['total']:.1f} kWp)",
+                "Datei": json_csv_path,
+                "Startzeile": 0,
+                "Intervall": 15,
+                "Einheit": "kW",
+                "Spaltentrennzeichen": ";",
+                "Dezimaltrennzeichen": ",",
+                "Datenspalte": "kW",
+                "Datum-Zeit-Spalte": "datetime",
+                "Datumspalte": "",
+                "Zeitspalte": "",
+                "Datum-Zeit-Format": "%Y-%m-%d %H:%M:%S",
+                "Typ": "Erzeugung",
+                "Farbe": "#AF9500",
+                "pv_konfiguration": {
+                    "west_kwp": options["pv_simulation"]["west"],
+                    "sued_kwp": options["pv_simulation"]["sued"],
+                    "ost_kwp": options["pv_simulation"]["ost"],
+                    "gesamt_kwp": options["pv_simulation"]["total"],
+                    "generiert_am": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")
+                }
+            }
+            
+            json_path = os.path.join(project_path, json_filename) # type: ignore
+            with open(json_path, "w", encoding="utf-8") as f:
+                json.dump(json_config, f, indent=4, ensure_ascii=False)
+            
+            st.success(f"✅ PV-Simulationsdaten gespeichert:")
+            st.write(f"📄 CSV: `data/{csv_filename}`")
+            st.write(f"⚙️ JSON: `{json_filename}`")
+            
+            # Reset des Export-Flags
+            st.session_state.export_pv_data = False
+            
     else:
         st.warning("PV Simulationsdatei nicht gefunden. Bitte sicherstellen, dass 'data/pv_simulation.csv' existiert.")
 
