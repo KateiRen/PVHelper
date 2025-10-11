@@ -4,7 +4,7 @@ import locale
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from helper import Datenbundle, timer, create_hourly_bundles, create_weekly_bundles, create_monthly_bundles, load_and_transform_data
+from helper import Datenbundle, timer, create_hourly_bundles, create_weekly_bundles, create_monthly_bundles, load_and_transform_data, check_and_remove_leap_day
 import yaml
 from helper import BatteryStorage
 
@@ -143,6 +143,7 @@ with st.sidebar.expander("🔋 Stromspeicher"):
 st.sidebar.markdown('---')
 st.sidebar.subheader("🛠️ Optionen")
 opt_clean_columns = st.sidebar.checkbox("Unnötige Spalten entfernen", value=True, help="Entfernt alle Spalten außer Datum/Uhrzeit und Wert")
+opt_etl_steps = st.sidebar.checkbox("Zeige ETL Schritte", value=False, help="Zeigt die Extract-Transform-Load Verarbeitungsschritte für jede Datenreihe")
 opt_show_dataframe = st.sidebar.checkbox("Dataframes anzeigen", value=False)
 opt_show_dataframe_infos = st.sidebar.checkbox("Dataframe Infos anzeigen", value=False)
 opt_show_statistics = st.sidebar.checkbox("Statistiken anzeigen", value=True)
@@ -154,6 +155,7 @@ options = {
     "show_dataframe_infos": opt_show_dataframe_infos,
     "calc": opt_calc,
     "timer": opt_timer,
+    "etl_steps": opt_etl_steps,
     "pv_simulation": {
         "enabled": enable_pv_simulation,
         "west": pv_west,
@@ -191,6 +193,10 @@ if options["pv_simulation"]["enabled"] and options["pv_simulation"]["total"] > 0
         df["kW"] = df["PV_east_30_norm"]*factor_east + df["PV_south_30_norm"]*factor_south + df["PV_west_30_norm"]*factor_west
         df["datetime"] = pd.to_datetime(df["Date [UTC+1]"], format="%d.%m.%Y %H:%M")
         df = df[["datetime", "kW"]]
+        
+        # Bereinige die PV-Daten um Schaltjahr-Einträge (29. Februar), BEVOR das Bundle erstellt wird
+        df = check_and_remove_leap_day(df, {"Intervall": 15}, options)
+        
         # Erzeuge ein Datenbundle für die PV-Simulation
         pv_bundle = Datenbundle(
             df=df,
@@ -200,6 +206,7 @@ if options["pv_simulation"]["enabled"] and options["pv_simulation"]["total"] > 0
             is_erzeugung=True,
             farbe="#AF9500"
         )
+
 
         bundles.append(pv_bundle)
         timer("PV Simulationsdaten wurden geladen und skaliert", opt_timer)

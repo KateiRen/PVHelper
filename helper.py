@@ -62,12 +62,14 @@ def read_csv_file2(df: pd.DataFrame, settings: dict, options: dict) -> pd.DataFr
     df = pd.read_csv(settings['Datei'], skiprows=settings['Startzeile'], decimal=settings['Dezimaltrennzeichen'], sep=settings['Spaltentrennzeichen'])
 
     if settings.get('Invertiert', False):
-        st.warning("Daten werden invertiert (negativ)")
+        if options.get('etl_steps', False):
+            st.warning("Daten werden invertiert (negativ)")
         df[settings['Datenspalte']] = -df[settings['Datenspalte']]
     
     if settings.get('offset', 0) != 0:
         offset = settings['offset']
-        st.warning(f"Daten werden um {offset} Intervalle verschoben")
+        if options.get('etl_steps', False):
+            st.warning(f"Daten werden um {offset} Intervalle verschoben")
         # Nur die Datenspalte verschieben, Datum-Zeit-Spalte bleibt unverändert
         df[settings['Datenspalte']] = df[settings['Datenspalte']].shift(offset)
         # Leere (NaN) Werte in der Datenspalte mit 0 auffüllen, Datum-Zeit bleibt erhalten
@@ -76,7 +78,8 @@ def read_csv_file2(df: pd.DataFrame, settings: dict, options: dict) -> pd.DataFr
 
 
 def create_datetime_index(df: pd.DataFrame, settings: dict, options: dict) -> pd.DataFrame:
-    st.write(f"Spalten im DataFrame: {list(df.columns)}")
+    if options.get('etl_steps', False):
+        st.write(f"Spalten im DataFrame: {list(df.columns)}")
     # Erstelle eine datetime-Spalte aus den vorhandenen Infos
     if settings['Datum-Zeit-Spalte']=="":
         df["datetime"] = pd.to_datetime(df[settings['Datumspalte']] + ' ' + df[settings['Zeitspalte']], format=settings['Datum-Zeit-Format'])
@@ -92,7 +95,8 @@ def create_datetime_index(df: pd.DataFrame, settings: dict, options: dict) -> pd
             null_count = df[col].isnull().sum()
             nan_count = df[col].isna().sum()
             if null_count > 0 or nan_count > 0:
-                st.warning(f"Spalte '{col}' enthält {null_count} Null-Werte und {nan_count} NaN-Werte. Diese Zeilen werden entfernt.")
+                if options.get('etl_steps', False):
+                    st.warning(f"Spalte '{col}' enthält {null_count} Null-Werte und {nan_count} NaN-Werte. Diese Zeilen werden entfernt.")
                 df = df[df[col].notnull() & df[col].notna()]
 
     if options['clean_columns']:
@@ -109,27 +113,32 @@ def check_and_fix_right_interval(df: pd.DataFrame, settings: dict, options: dict
     # Rechtsbündige Zeitangaben auf Linksbündig shiften
     if settings['Intervall'] == 15 and df['datetime'].iloc[0].time() == pd.Timestamp("00:15:00").time():
         df['datetime'] = df['datetime'] - pd.Timedelta(minutes=15)
-        st.warning("Rechtsbündige 15 Minuten Intervalle um 15 Minuten reduziert")
+        if options.get('etl_steps', False):
+            st.warning("Rechtsbündige 15 Minuten Intervalle um 15 Minuten reduziert")
     if settings['Intervall'] == 60 and df['datetime'].iloc[0].time() == pd.Timestamp("01:00:00").time():
         df['datetime'] = df['datetime'] - pd.Timedelta(minutes=60)
-        st.warning("Rechtsbündige 60 Minuten Intervalle um 60 Minuten reduziert")
-    check_rowcount(df, settings)
+        if options.get('etl_steps', False):
+            st.warning("Rechtsbündige 60 Minuten Intervalle um 60 Minuten reduziert")
+    check_rowcount(df, settings, options)
     return df
 
 
-def check_rowcount(df: pd.DataFrame, settings: dict) -> pd.DataFrame:
+def check_rowcount(df: pd.DataFrame, settings: dict, options: dict) -> pd.DataFrame:
     # Prüfe, ob die Anzahl der Zeilen zur Anzahl der Tage passt
     unique_days = df['datetime'].dt.date.nunique()
-    st.info(f"Anzahl der einzigartigen Tagesdaten: {unique_days}")
+    if options.get('etl_steps', False):
+        st.info(f"Anzahl der einzigartigen Tagesdaten: {unique_days}")
     #expected_rows = unique_days * (1440 // settings['Intervall'])
     expected_rows = unique_days * 24 * (60 // settings['Intervall'])
     #total_minutes = (df['datetime'].max() - df['datetime'].min()).total_seconds() / 60
     #expected_rows = int(total_minutes / interval) + 1  # +1 da inkl. Start- und Endzeitpunkt
     actual_rows = df.shape[0]
     if expected_rows != actual_rows:
-        st.warning(f"Erwartete Zeilenanzahl: {expected_rows}, tatsächliche Zeilenanzahl: {actual_rows}. Es gibt eine Abweichung.")
+        if options.get('etl_steps', False):
+            st.warning(f"Erwartete Zeilenanzahl: {expected_rows}, tatsächliche Zeilenanzahl: {actual_rows}. Es gibt eine Abweichung.")
     else:
-        st.success(f"Die Anzahl der Zeilen ({actual_rows}) stimmt mit der erwarteten Anzahl überein.")
+        if options.get('etl_steps', False):
+            st.success(f"Die Anzahl der Zeilen ({actual_rows}) stimmt mit der erwarteten Anzahl überein.")
     return df
 
 
@@ -157,19 +166,22 @@ def get_unique_kw_column_name(df: pd.DataFrame, base_name: str = "Wert-kW") -> s
 
 def check_and_convert_to_kW(df: pd.DataFrame, settings: dict, options: dict) -> pd.DataFrame:
     if settings['Einheit'].lower() == 'kw':
-        st.info("Daten sind bereits in kW")
+        if options.get('etl_steps', False):
+            st.info("Daten sind bereits in kW")
         if settings['Datenspalte'] != "kW":
             df.rename(columns={settings['Datenspalte']: "kW"}, inplace=True)
         return df
     elif settings['Einheit'].lower() == 'kwh':
-        st.info("Daten sind in kWh, werden zu kW umgerechnet")
+        if options.get('etl_steps', False):
+            st.info("Daten sind in kWh, werden zu kW umgerechnet")
         kw_column = get_unique_kw_column_name(df)  
         hours_per_interval = settings['Intervall'] / 60
         df[kw_column] = df[settings['Datenspalte']] / hours_per_interval
         df.drop(columns=[settings['Datenspalte']], inplace=True)
         df.rename(columns={kw_column: "kW"}, inplace=True)
     else:
-        st.error(f"Unbekannte Einheit: {settings['Einheit']}. Erwartet 'kW' oder 'kWh'.")
+        if options.get('etl_steps', False):
+            st.error(f"Unbekannte Einheit: {settings['Einheit']}. Erwartet 'kW' oder 'kWh'.")
     return df
 
 
@@ -191,9 +203,10 @@ def check_and_remove_leap_day(df: pd.DataFrame, settings: dict, options: dict) -
     # Prüfe, ob es Daten für den 29. Februar gibt (Schaltjahr) und lösche diese Zeilen
     leap_day_mask = (df['datetime'].dt.month == 2) & (df['datetime'].dt.day == 29)
     if leap_day_mask.any():
-        st.warning(f"Es wurden {leap_day_mask.sum()} Zeilen mit Daten für den 29. Februar gefunden und entfernt.")
+        if options.get('etl_steps', False):
+            st.warning(f"Es wurden {leap_day_mask.sum()} Zeilen mit Daten für den 29. Februar gefunden und entfernt.")
         df = df[~leap_day_mask]
-        check_rowcount(df, settings)
+        check_rowcount(df, settings, options)
     return df
 
 
@@ -207,13 +220,16 @@ def check_and_correct_continuity(df: pd.DataFrame, settings: dict, options: dict
     # Finde alle abweichenden Zeitstempel
     abweichende_zeitstempel = df['datetime'][~df['datetime'].isin(temp_df['datetime'])]
     if not abweichende_zeitstempel.empty:
-        st.info(f"Abweichende Zeitstempel im DataFrame: {[dt.strftime('%Y-%m-%d %H:%M:%S') for dt in abweichende_zeitstempel[:10]]}")
+        if options.get('etl_steps', False):
+            st.info(f"Abweichende Zeitstempel im DataFrame: {[dt.strftime('%Y-%m-%d %H:%M:%S') for dt in abweichende_zeitstempel[:10]]}")
         idxs = df.index[~df['datetime'].isin(temp_df['datetime'])]
         expected_times = temp_df['datetime'][0:len(idxs)].values
         df.loc[idxs, 'datetime'] = expected_times
-        st.success(f"{len(idxs)} abweichende Zeitstempel wurden auf die erwarteten Werte korrigiert.")
+        if options.get('etl_steps', False):
+            st.success(f"{len(idxs)} abweichende Zeitstempel wurden auf die erwarteten Werte korrigiert.")
     else:
-        st.success("Alle Zeitstempel sind korrekt und kontinuierlich.")
+        if options.get('etl_steps', False):
+            st.success("Alle Zeitstempel sind korrekt und kontinuierlich.")
     return df
 
 
@@ -222,19 +238,23 @@ def scale_dataframe(df: pd.DataFrame, settings: dict, options: dict) -> pd.DataF
     if 'Zielgesamtwert' in settings and settings['Zielgesamtwert'] is not None:
         interval_hours = settings.get('Intervall', 15) / 60
         current_kwh_total = (df['kW'] * interval_hours).sum()
-        st.warning("Datenreihe wird auf Zielgesamtwert skaliert (kWh Basis)")
+        if options.get('etl_steps', False):
+            st.warning("Datenreihe wird auf Zielgesamtwert skaliert (kWh Basis)")
         scale_factor = settings['Zielgesamtwert'] / current_kwh_total
         df['kW'] = df['kW'] * scale_factor
-        show_dataframe_info(df, 'kW')
+        if options.get('etl_steps', False):
+            show_dataframe_info(df, 'kW')
         
     if 'Zielspitzenwert' in settings and settings['Zielspitzenwert'] is not None:
         interval_hours = settings.get('Intervall', 15) / 60
         current_kwh_total = (df['kW'] * interval_hours).sum()
-        st.warning("Datenreihe wird auf Zielspitzenwert skaliert (kW Basis)")
+        if options.get('etl_steps', False):
+            st.warning("Datenreihe wird auf Zielspitzenwert skaliert (kW Basis)")
         current_peak_kw = df['kW'].max()
         scale_factor = settings['Zielspitzenwert'] / current_peak_kw
         df['kW'] = df['kW'] * scale_factor
-        show_dataframe_info(df, 'kW')
+        if options.get('etl_steps', False):
+            show_dataframe_info(df, 'kW')
         
     return df
 
@@ -392,6 +412,22 @@ def timer(description: str="", opt_timer: bool=False):
         #return f"{elapsed:.2f}"
 
 
+def get_etl_step_description(step_name: str) -> str:
+    """
+    Gibt eine benutzerfreundliche Beschreibung für jeden ETL-Schritt zurück.
+    """
+    descriptions = {
+        "read_csv_file2": "📥 Extract: CSV-Datei laden und parsen",
+        "create_datetime_index": "🗓️ Transform: Datetime-Index aus Zeitstempel erstellen",
+        "check_and_fix_right_interval": "⏱️ Transform: Zeitintervalle validieren und korrigieren",
+        "check_and_remove_leap_day": "📅 Transform: Schaltjahres-Tage entfernen für Konsistenz",
+        "check_and_correct_continuity": "🔗 Transform: Datenkontinuität prüfen und korrigieren",
+        "check_and_convert_to_kW": "⚡ Transform: Einheiten zu kW konvertieren und validieren",
+        "scale_dataframe": "📊 Load: Daten skalieren und finale Struktur erstellen"
+    }
+    return descriptions.get(step_name, f"🔧 {step_name}: Datenverarbeitungsschritt")
+
+
 def load_and_transform_data(config_path: str, options: dict) -> Datenbundle:
     """
     Load CSV data from file_path and apply transformations based on settings.
@@ -446,11 +482,30 @@ def load_and_transform_data(config_path: str, options: dict) -> Datenbundle:
 #    df = scale_dataframe(df, settings)
 
     df = pd.DataFrame()  # Initialisiere df hier
+    etl_steps = []  # Liste der durchgeführten ETL-Schritte
+    
     for job in jobs:
+        step_name = job.__name__
         df = job(df, settings, options)
-        timer(f"{job.__name__} abgeschlossen", options.get('timer', False))
-        print(f"{job.__name__} abgeschlossen. Spalten: {list(df.columns)}")
-        if options['show_dataframe_infos']:
+        timer(f"{step_name} abgeschlossen", options.get('timer', False))
+        print(f"{step_name} abgeschlossen. Spalten: {list(df.columns)}")
+        
+        # ETL-Schritt verfolgen
+        etl_steps.append({
+            "step": step_name,
+            "rows": df.shape[0] if not df.empty else 0,
+            "columns": list(df.columns) if not df.empty else [],
+            "description": get_etl_step_description(step_name)
+        })
+        
+        if options.get('etl_steps', False):
+            st.write(f"**ETL-Schritt:** {step_name}")
+            st.write(f"  - Beschreibung: {get_etl_step_description(step_name)}")
+            st.write(f"  - Resultat: {df.shape[0]} Zeilen, {df.shape[1]} Spalten")
+            if not df.empty:
+                st.write(f"  - Spalten: {', '.join(df.columns)}")
+        
+        if options.get('show_dataframe_infos', False):
             show_dataframe_infos = st.expander("ℹ️ Infos zum Dataframe")
             with show_dataframe_infos:
                 st.write(f"**Form:** {df.shape}")
