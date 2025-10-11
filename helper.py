@@ -506,6 +506,7 @@ def load_and_transform_data(config_path: str, options: dict) -> Datenbundle:
                 st.write(f"  - Spalten: {', '.join(df.columns)}")
         
         if options.get('show_dataframe_infos', False):
+            st.write(f"**Nach Schritt:** {get_etl_step_description(step_name)} - *{settings.get('Name', 'Unbekannte Datenreihe')}*")
             show_dataframe_infos = st.expander("ℹ️ Infos zum Dataframe")
             with show_dataframe_infos:
                 st.write(f"**Form:** {df.shape}")
