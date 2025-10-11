@@ -5,6 +5,8 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 from helper import Datenbundle, timer, create_hourly_bundles, create_weekly_bundles, create_monthly_bundles, load_and_transform_data
+import yaml
+from helper import BatteryStorage
 
 
 ###########################################################################################
@@ -109,6 +111,36 @@ with st.sidebar.expander("🌞 PV Simulation"):
             st.session_state.export_pv_data = True
 
 st.sidebar.markdown('---')
+
+# Stromspeicher Bereich
+with st.sidebar.expander("🔋 Stromspeicher"):
+    enable_battery = st.toggle("Stromspeicher aktivieren", value=False)
+    
+    # Lade verfügbare YAML-Dateien aus dem batteries-Ordner
+    batteries_folder = "batteries"
+    battery_files = []
+    if os.path.exists(batteries_folder):
+        battery_files = [f for f in os.listdir(batteries_folder) if f.endswith(".yaml")]
+    
+    if battery_files:
+        selected_battery = st.selectbox(
+            "Batteriekonfiguration wählen",
+            options=["Keine"] + battery_files,
+            index=0,
+            help="Wähle eine Batteriekonfiguration aus dem batteries-Ordner",
+            disabled=not enable_battery
+        )
+        
+        if enable_battery and selected_battery != "Keine":
+            battery_path = os.path.join(batteries_folder, selected_battery)
+            st.info(f"✅ Batterie: {selected_battery}")
+        elif enable_battery:
+            st.warning("⚡ Stromspeicher aktiviert, aber keine Konfiguration gewählt")
+    else:
+        selected_battery = "Keine"
+        st.warning("Keine Batteriekonfigurationen im 'batteries' Ordner gefunden")
+
+st.sidebar.markdown('---')
 st.sidebar.subheader("🛠️ Optionen")
 opt_clean_columns = st.sidebar.checkbox("Unnötige Spalten entfernen", value=True, help="Entfernt alle Spalten außer Datum/Uhrzeit und Wert")
 opt_show_dataframe = st.sidebar.checkbox("Dataframes anzeigen", value=False)
@@ -128,6 +160,11 @@ options = {
         "sued": pv_sued,
         "ost": pv_ost,
         "total": pv_west + pv_sued + pv_ost
+    },
+    "battery": {
+        "enabled": enable_battery,
+        "config_file": selected_battery if enable_battery and selected_battery != "Keine" else None,
+        "config_path": os.path.join(batteries_folder, selected_battery) if enable_battery and selected_battery != "Keine" else None
     }
 }
 
@@ -223,6 +260,15 @@ if options["pv_simulation"]["enabled"] and options["pv_simulation"]["total"] > 0
             
     else:
         st.warning("PV Simulationsdatei nicht gefunden. Bitte sicherstellen, dass 'data/pv_simulation.csv' existiert.")
+
+
+    # Lade Batterie-Konfiguration, wenn aktiviert und ausgewählt
+    battery_storage = None
+    if options["battery"]["enabled"] and options["battery"]["config_file"]:
+        with open(options["battery"]["config_path"], "r", encoding="utf-8") as f:
+            battery_config = yaml.safe_load(f)
+        battery_storage = BatteryStorage(**battery_config)
+        st.info(f"Batteriespeicher geladen: {battery_storage}")
 
 
 
@@ -395,7 +441,7 @@ if len(bundles) > 0:
             merged["Einspeisung (kW)"] = merged["kW_Erzeugung"] - merged["Eigenverbrauch (kW)"]
             # Fremdbezug = Last - Eigenverbrauch
             merged["Fremdbezug (kW)"] = merged["kW_Last"] - merged["Eigenverbrauch (kW)"]
-            merged["Differenz (kW)"] = merged["kW_Erzeugung"] - merged["kW_Last"]
+            #merged["Differenz (kW)"] = merged["kW_Erzeugung"] - merged["kW_Last"]
             # Auswahlbox für Export
             export_columns = ["Eigenverbrauch (kW)", "Einspeisung (kW)", "Fremdbezug (kW)", "Differenz (kW)"]
             export_selection = st.selectbox(
@@ -488,13 +534,21 @@ if len(bundles) > 0:
     st.subheader("Gesamter Zeitraum")
 
     # Ensure all columns except 'datetime' are used for plotting
-    columns_to_plot = [col for col in df_full.columns if col != "datetime"]
+    columns_to_plot = [col for col in df_full.columns if col != "datetime" and col not in ["kW_Last", "kW_Erzeugung"]]
     # Farben aus den Bundles übernehmen, falls definiert
     color_discrete_map = {}
     for bundle in bundles:
         col_name = bundle.description + " (kW)"
         if col_name in columns_to_plot and bundle.farbe:
             color_discrete_map[col_name] = bundle.farbe
+    
+    # Spezifische Farben für berechnete Kategorien
+    color_discrete_map.update({
+        "Eigenverbrauch (kW)": "#00AA00",  # Grün
+        "Einspeisung (kW)": "#0066CC",     # Blau
+        "Fremdbezug (kW)": "#CC0000",      # Rot
+        "Differenz (kW)": "#666666"        # Grau für Differenz
+    })
 
     # Plotly line chart mit Farbanpassung
     if columns_to_plot:
@@ -541,7 +595,7 @@ if len(bundles) > 0:
         df_strongest_month = df_full[mask]
 
         # Plotly Liniendiagramm für diesen Monat
-        columns_to_plot = [col for col in df_strongest_month.columns if col != "datetime"]
+        columns_to_plot = [col for col in df_strongest_month.columns if col != "datetime" and col not in ["kW_Last", "kW_Erzeugung"]]
         if not df_strongest_month.empty and columns_to_plot:
             line_chart_fig_month = px.line(
                 df_strongest_month,
@@ -572,7 +626,7 @@ if len(bundles) > 0:
         df_strongest_week = df_full[mask]
 
         # Plotly Liniendiagramm für diese Woche
-        columns_to_plot = [col for col in df_strongest_week.columns if col != "datetime"]
+        columns_to_plot = [col for col in df_strongest_week.columns if col != "datetime" and col not in ["kW_Last", "kW_Erzeugung"]]
         if not df_strongest_week.empty and columns_to_plot:
             line_chart_fig_week = px.line(
                 df_strongest_week,
