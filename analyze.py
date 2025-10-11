@@ -249,19 +249,36 @@ if len(bundles) > 0:
                 last_bundle.df,
                 erzeugung_bundle.df,
                 on="datetime",
-                suffixes=("_last", "_erzeugung")
+                suffixes=("_Last", "_Erzeugung")
             )
             
             # Eigenverbrauch = min(Erzeugung, Last)
-            merged["Eigenverbrauch (kW)"] = merged[["kW_last", "kW_erzeugung"]].min(axis=1)
+            merged["Eigenverbrauch (kW)"] = merged[["kW_Last", "kW_Erzeugung"]].min(axis=1)
             # Einspeisung = Erzeugung - Eigenverbrauch
-            merged["Einspeisung (kW)"] = merged["kW_erzeugung"] - merged["Eigenverbrauch (kW)"]
+            merged["Einspeisung (kW)"] = merged["kW_Erzeugung"] - merged["Eigenverbrauch (kW)"]
             # Fremdbezug = Last - Eigenverbrauch
-            merged["Fremdbezug (kW)"] = merged["kW_last"] - merged["Eigenverbrauch (kW)"]
+            merged["Fremdbezug (kW)"] = merged["kW_Last"] - merged["Eigenverbrauch (kW)"]
+            merged["Differenz (kW)"] = merged["kW_Erzeugung"] - merged["kW_Last"]
+            # Auswahlbox für Export
+            export_columns = ["Eigenverbrauch (kW)", "Einspeisung (kW)", "Fremdbezug (kW)", "Differenz (kW)"]
+            export_selection = st.selectbox(
+                "Wähle eine berechnete Datenreihe zum Exportieren als CSV:",
+                export_columns,
+                index=0
+            )
+            export_df = merged[["datetime", export_selection]].copy()
+            export_df.columns = ["datetime", export_selection]
 
+            csv_data = export_df.to_csv(index=False).encode("utf-8")
+            st.download_button(
+                label=f"CSV herunterladen: {export_selection}",
+                data=csv_data,
+                file_name=f"{export_selection.replace(' ', '_')}.csv",
+                mime="text/csv"
+            )
             if opt_show_dataframe: # type: ignore
                 st.markdown("### Eigenverbrauch und Einspeisung")
-                st.dataframe(merged[["datetime", "kW_last", "kW_erzeugung", "Eigenverbrauch (kW)", "Einspeisung (kW)", "Fremdbezug (kW)"]])
+                st.dataframe(merged[["datetime", "kW_Last", "kW_Erzeugung", "Eigenverbrauch (kW)", "Einspeisung (kW)", "Fremdbezug (kW)"]])
             timer("Zeit nach dem Berechnen von Eigenverbrauch und Darstellung des Dataframes", opt_timer)
 
             col1, col2, col3 = st.columns(3)
@@ -269,6 +286,9 @@ if len(bundles) > 0:
             with col1:
                 st.write("#### Eigenverbrauch")
                 st.write(f"Summe Eigenverbrauch: {merged['Eigenverbrauch (kW)'].sum():,.2f} kW")
+                # Summe als kWh anzeigen (Intervall in Minuten, geteilt durch 60)
+                sum_ev_kwh = merged['Eigenverbrauch (kW)'].sum() * (bundles[0].interval / 60)
+                st.write(f"Summe Eigenverbrauch: {sum_ev_kwh:,.2f} kWh")
                 st.write(f"Durchschnitt Eigenverbrauch: {merged['Eigenverbrauch (kW)'].mean():,.2f} kW")
                 min_ev = merged['Eigenverbrauch (kW)'].min()
                 max_ev = merged['Eigenverbrauch (kW)'].max()
@@ -280,6 +300,8 @@ if len(bundles) > 0:
             with col2:
                 st.write("#### Einspeisung")
                 st.write(f"Summe Einspeisung: {merged['Einspeisung (kW)'].sum():,.2f} kW")
+                sum_ein_kwh = merged['Einspeisung (kW)'].sum() * (bundles[0].interval / 60)
+                st.write(f"Summe Einspeisung: {sum_ein_kwh:,.2f} kWh")
                 st.write(f"Durchschnitt Einspeisung: {merged['Einspeisung (kW)'].mean():,.2f} kW")
                 min_ein = merged['Einspeisung (kW)'].min()
                 max_ein = merged['Einspeisung (kW)'].max()
@@ -291,6 +313,8 @@ if len(bundles) > 0:
             with col3:
                 st.write("#### Fremdbezug")
                 st.write(f"Summe Fremdbezug: {merged['Fremdbezug (kW)'].sum():,.2f} kW")
+                sum_fb_kwh = merged['Fremdbezug (kW)'].sum() * (bundles[0].interval / 60)
+                st.write(f"Summe Fremdbezug: {sum_fb_kwh:,.2f} kWh")
                 st.write(f"Durchschnitt Fremdbezug: {merged['Fremdbezug (kW)'].mean():,.2f} kW")
                 min_fb = merged['Fremdbezug (kW)'].min()
                 max_fb = merged['Fremdbezug (kW)'].max()
@@ -299,6 +323,15 @@ if len(bundles) > 0:
                 st.write(f"Minimum Fremdbezug: {min_fb:,.2f} kW am {min_fb_row['datetime']}")
                 st.write(f"Maximum Fremdbezug: {max_fb:,.2f} kW am {max_fb_row['datetime']}")
 
+                # Gesamtautarkiegrad berechnen und anzeigen
+                # Autarkiegrad = Eigenverbrauch / Last
+                gesamt_eigenverbrauch = merged["Eigenverbrauch (kW)"].sum()
+                gesamt_last = merged["kW_Last"].sum()
+                if gesamt_last > 0:
+                    autarkiegrad = gesamt_eigenverbrauch / gesamt_last * 100
+                    st.success(f"**Gesamtautarkiegrad:** {autarkiegrad:,.2f} %")
+                else:
+                    st.warning("Gesamtautarkiegrad kann nicht berechnet werden (Summe Last = 0).")
 
             for col in merged.columns:
                 if col != "datetime" and col not in df_full.columns:

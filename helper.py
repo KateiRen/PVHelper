@@ -21,6 +21,24 @@ def read_csv_file(path: str, skiprows: int = 0, decimal: str = ",", sep: str = "
     df = pd.read_csv(path, skiprows=skiprows, decimal=decimal, sep=sep)
     return df
 
+@st.cache_data
+def read_csv_file2(df: pd.DataFrame, settings: dict, options: dict) -> pd.DataFrame:
+
+    df = pd.read_csv(settings['Datei'], skiprows=settings['Startzeile'], decimal=settings['Dezimaltrennzeichen'], sep=settings['Spaltentrennzeichen'])
+
+    if settings.get('Invertiert', False):
+        st.warning("Daten werden invertiert (negativ)")
+        df[settings['Datenspalte']] = -df[settings['Datenspalte']]
+    
+    if settings.get('offset', 0) != 0:
+        offset = settings['offset']
+        st.warning(f"Daten werden um {offset} Intervalle verschoben")
+        # Nur die Datenspalte verschieben, Datum-Zeit-Spalte bleibt unverändert
+        df[settings['Datenspalte']] = df[settings['Datenspalte']].shift(offset)
+        # Leere (NaN) Werte in der Datenspalte mit 0 auffüllen, Datum-Zeit bleibt erhalten
+        df[settings['Datenspalte']].fillna(0, inplace=True)
+    return df
+
 
 def create_datetime_index(df: pd.DataFrame, settings: dict, options: dict) -> pd.DataFrame:
     st.write(f"Spalten im DataFrame: {list(df.columns)}")
@@ -43,7 +61,7 @@ def create_datetime_index(df: pd.DataFrame, settings: dict, options: dict) -> pd
                 df = df[df[col].notnull() & df[col].notna()]
 
     if options['clean_columns']:
-        df = df[[col for col in df.columns if col in ["datetime", settings['Datenspalte']]]]
+        df = df[[col for col in df.columns if col in ['datetime', settings['Datenspalte']]]]
     # Entferne die Spalten nur, wenn sie existieren
 #    cols_to_drop = [settings['Datumspalte'], settings['Zeitspalte']]
 #    existing_cols = [col for col in cols_to_drop if col in df.columns]
@@ -63,6 +81,7 @@ def check_and_fix_right_interval(df: pd.DataFrame, settings: dict, options: dict
     check_rowcount(df, settings)
     return df
 
+
 def check_rowcount(df: pd.DataFrame, settings: dict) -> pd.DataFrame:
     # Prüfe, ob die Anzahl der Zeilen zur Anzahl der Tage passt
     unique_days = df['datetime'].dt.date.nunique()
@@ -77,6 +96,7 @@ def check_rowcount(df: pd.DataFrame, settings: dict) -> pd.DataFrame:
     else:
         st.success(f"Die Anzahl der Zeilen ({actual_rows}) stimmt mit der erwarteten Anzahl überein.")
     return df
+
 
 def get_unique_kw_column_name(df: pd.DataFrame, base_name: str = "Wert-kW") -> str:
     """
@@ -99,6 +119,7 @@ def get_unique_kw_column_name(df: pd.DataFrame, base_name: str = "Wert-kW") -> s
     
     return f"{base_name}_{counter}"
 
+
 def check_and_convert_to_kW(df: pd.DataFrame, settings: dict, options: dict) -> pd.DataFrame:
     if settings['Einheit'].lower() == 'kw':
         st.info("Daten sind bereits in kW")
@@ -112,23 +133,23 @@ def check_and_convert_to_kW(df: pd.DataFrame, settings: dict, options: dict) -> 
         df[kw_column] = df[settings['Datenspalte']] / hours_per_interval
         df.drop(columns=[settings['Datenspalte']], inplace=True)
         df.rename(columns={kw_column: "kW"}, inplace=True)
+    else:
+        st.error(f"Unbekannte Einheit: {settings['Einheit']}. Erwartet 'kW' oder 'kWh'.")
     return df
 
 
-def calculate_kwh_from_kw(df: pd.DataFrame, interval_minutes: int, kw_column: str = "Wert-kW") -> pd.Series:
-    """
-    Calculate kWh values from kW data based on time interval.
-    Args:
-        df: DataFrame with kW power data
-        interval_minutes: Time interval in minutes (e.g., 15 for 15-minute data)
-        kw_column: Name of kW column to convert
-    Returns:
-        Series with kWh values
-    """
-    hours_per_interval = interval_minutes / 60
-    return df[kw_column] * hours_per_interval
-
-
+#def calculate_kwh_from_kw(df: pd.DataFrame, interval_minutes: int, kw_column: str = "Wert-kW") -> pd.Series:
+#    """
+#    Calculate kWh values from kW data based on time interval.
+#    Args:
+#        df: DataFrame with kW power data
+#        interval_minutes: Time interval in minutes (e.g., 15 for 15-minute data)
+#        kw_column: Name of kW column to convert
+#    Returns:
+#        Series with kWh values
+#    """
+#    hours_per_interval = interval_minutes / 60
+#    return df[kw_column] * hours_per_interval
 
 
 def check_and_remove_leap_day(df: pd.DataFrame, settings: dict, options: dict) -> pd.DataFrame:
@@ -162,18 +183,18 @@ def check_and_correct_continuity(df: pd.DataFrame, settings: dict, options: dict
 
 
 def scale_dataframe(df: pd.DataFrame, settings: dict, options: dict) -> pd.DataFrame:
-  
-    # Calculate current kWh total for scaling reference
-    interval_hours = settings.get('Intervall', 15) / 60
-    current_kwh_total = (df['kW'] * interval_hours).sum()
-    
+      # Skaliere die Datenreihe auf den Zielgesamtwert (kWh) oder Zielspitzenwert (kW)    
     if 'Zielgesamtwert' in settings and settings['Zielgesamtwert'] is not None:
+        interval_hours = settings.get('Intervall', 15) / 60
+        current_kwh_total = (df['kW'] * interval_hours).sum()
         st.warning("Datenreihe wird auf Zielgesamtwert skaliert (kWh Basis)")
         scale_factor = settings['Zielgesamtwert'] / current_kwh_total
         df['kW'] = df['kW'] * scale_factor
         show_dataframe_info(df, 'kW')
         
     if 'Zielspitzenwert' in settings and settings['Zielspitzenwert'] is not None:
+        interval_hours = settings.get('Intervall', 15) / 60
+        current_kwh_total = (df['kW'] * interval_hours).sum()
         st.warning("Datenreihe wird auf Zielspitzenwert skaliert (kW Basis)")
         current_peak_kw = df['kW'].max()
         scale_factor = settings['Zielspitzenwert'] / current_peak_kw
@@ -206,6 +227,7 @@ def show_dataframe_info(df: pd.DataFrame, col=None):
     # Lösche die Spalte 'date', da sie nicht mehr benötigt wird
     df.drop(columns=['date'], inplace=True)
 
+
 # Hilfsfunktion: Aggregiert alle Bundles stündlich
 @st.cache_data
 def create_hourly_bundles(bundles: List[Datenbundle]) -> List[Datenbundle]:
@@ -221,7 +243,7 @@ def create_hourly_bundles(bundles: List[Datenbundle]) -> List[Datenbundle]:
         df['hour'] = df['datetime'].dt.floor('h')
         
         # For kW data, take mean; for kWh data, sum
-        if value_col == "kW":
+        if value_col == 'kW':
             agg_df = df.groupby('hour', as_index=False).agg({
                 value_col: 'mean',  # Average power over the hour
             })
@@ -244,6 +266,7 @@ def create_hourly_bundles(bundles: List[Datenbundle]) -> List[Datenbundle]:
         )
         hourly_bundles.append(hourly_bundle)
     return hourly_bundles
+
 
 # Hilfsfunktion: Aggregiert alle Bundles wochentagsweise (Mo-Fr)
 @st.cache_data
@@ -280,6 +303,7 @@ def create_weekly_bundles(bundles: List[Datenbundle]) -> List[Datenbundle]:
         )
         weekly_bundles.append(weekly_bundle)
     return weekly_bundles
+
 
 # Hilfsfunktion: Aggregiert alle Bundles monatlich
 @st.cache_data
@@ -318,7 +342,6 @@ def create_monthly_bundles(bundles: List[Datenbundle]) -> List[Datenbundle]:
     return monthly_bundles
 
 
-
 def timer(description: str="", opt_timer: bool=False):
     if not hasattr(timer, "last_time"):
         timer.last_time = time.time() # type: ignore
@@ -332,7 +355,6 @@ def timer(description: str="", opt_timer: bool=False):
         if opt_timer:
             st.write(f"{description}: {elapsed:.2f} Sekunden") # type: ignore
         #return f"{elapsed:.2f}"
-
 
 
 def load_and_transform_data(config_path: str, options: dict) -> Datenbundle:
@@ -352,26 +374,28 @@ def load_and_transform_data(config_path: str, options: dict) -> Datenbundle:
 
     print(f"Lade und transformiere Daten aus: {settings.get('Dateipfad', '')}")
 
-    df = read_csv_file(
-        path=settings.get('Datei', ''),
-        skiprows=settings.get('Startzeile', 0),
-        decimal=settings.get('Dezimaltrennzeichen', ','),
-        sep=settings.get('Spaltentrennzeichen', ';')
-    )
-    if settings.get('Invertiert', False):
-        st.warning("Daten werden invertiert (negativ)")
-        df[settings['Datenspalte']] = -df[settings['Datenspalte']]
-    
-    if settings.get('offset', 0) != 0:
-        offset = settings['offset']
-        st.warning(f"Daten werden um {offset} Intervalle verschoben")
-        # Nur die Datenspalte verschieben, Datum-Zeit-Spalte bleibt unverändert
-        df[settings['Datenspalte']] = df[settings['Datenspalte']].shift(offset)
-        # Leere (NaN) Werte in der Datenspalte mit 0 auffüllen, Datum-Zeit bleibt erhalten
-        df[settings['Datenspalte']].fillna(0, inplace=True)
+#    df = read_csv_file(
+#        path=settings.get('Datei', ''),
+#        skiprows=settings.get('Startzeile', 0),
+#        decimal=settings.get('Dezimaltrennzeichen', ','),
+#        sep=settings.get('Spaltentrennzeichen', ';')
+#    )
+#    if settings.get('Invertiert', False):
+#        st.warning("Daten werden invertiert (negativ)")
+#        df[settings['Datenspalte']] = -df[settings['Datenspalte']]
+#    
+#    if settings.get('offset', 0) != 0:
+#        offset = settings['offset']
+#        st.warning(f"Daten werden um {offset} Intervalle verschoben")
+#        # Nur die Datenspalte verschieben, Datum-Zeit-Spalte bleibt unverändert
+#        df[settings['Datenspalte']] = df[settings['Datenspalte']].shift(offset)
+#        # Leere (NaN) Werte in der Datenspalte mit 0 auffüllen, Datum-Zeit bleibt erhalten
+#        df[settings['Datenspalte']].fillna(0, inplace=True)
 
 
-    jobs = [create_datetime_index,
+    jobs = [
+            read_csv_file2,
+            create_datetime_index,
             check_and_fix_right_interval, 
             check_and_remove_leap_day,
             check_and_correct_continuity,
@@ -385,9 +409,12 @@ def load_and_transform_data(config_path: str, options: dict) -> Datenbundle:
 #    df = check_and_correct_continuity(df, settings)
 #    df = process_power_data(df, settings)
 #    df = scale_dataframe(df, settings)
+
+    df = pd.DataFrame()  # Initialisiere df hier
     for job in jobs:
         df = job(df, settings, options)
         timer(f"{job.__name__} abgeschlossen", options.get('timer', False))
+        print(f"{job.__name__} abgeschlossen. Spalten: {list(df.columns)}")
         if options['show_dataframe_infos']:
             show_dataframe_infos = st.expander("ℹ️ Infos zum Dataframe")
             with show_dataframe_infos:
