@@ -64,6 +64,45 @@ else:
         files.append(selected_file3)
 
 st.sidebar.markdown('---')
+
+# PV Simulation Bereich
+with st.sidebar.expander("🌞 PV Simulation"):
+    enable_pv_simulation = st.toggle("Simulation PV", value=False)
+    
+    if enable_pv_simulation:
+        pv_west = st.number_input(
+            "West (kWp)", 
+            min_value=0.0, 
+            max_value=1000.0, 
+            value=0.0, 
+            step=0.1,
+            help="Installierte Leistung West-Ausrichtung"
+        )
+        pv_sued = st.number_input(
+            "Süd (kWp)", 
+            min_value=0.0, 
+            max_value=1000.0, 
+            value=0.0, 
+            step=0.1,
+            help="Installierte Leistung Süd-Ausrichtung"
+        )
+        pv_ost = st.number_input(
+            "Ost (kWp)", 
+            min_value=0.0, 
+            max_value=1000.0, 
+            value=0.0, 
+            step=0.1,
+            help="Installierte Leistung Ost-Ausrichtung"
+        )
+        
+        pv_total = pv_west + pv_sued + pv_ost
+        if pv_total > 0:
+            st.info(f"Gesamt: {pv_total:.1f} kWp")
+
+    else:
+        pv_west = pv_sued = pv_ost = 0.0
+
+st.sidebar.markdown('---')
 st.sidebar.subheader("🛠️ Optionen")
 opt_clean_columns = st.sidebar.checkbox("Unnötige Spalten entfernen", value=True, help="Entfernt alle Spalten außer Datum/Uhrzeit und Wert")
 opt_show_dataframe = st.sidebar.checkbox("Dataframes anzeigen", value=False)
@@ -76,7 +115,14 @@ options = {
     "show_dataframe": opt_show_dataframe,
     "show_dataframe_infos": opt_show_dataframe_infos,
     "calc": opt_calc,
-    "timer": opt_timer
+    "timer": opt_timer,
+    "pv_simulation": {
+        "enabled": enable_pv_simulation,
+        "west": pv_west,
+        "sued": pv_sued,
+        "ost": pv_ost,
+        "total": pv_west + pv_sued + pv_ost
+    }
 }
 
 timer("", False)
@@ -86,6 +132,36 @@ for file in files:
     bundles.append(load_and_transform_data(file_path, options)) # type: ignore
     timer(f"{file} wurde geladen", opt_timer)
 
+if options["pv_simulation"]["enabled"] and options["pv_simulation"]["total"] > 0:
+    # PV Daten laden und zum Bundle hinzufügen
+    pv_file_path = os.path.join("reference", "PV_series.csv")
+    if os.path.exists(pv_file_path):
+        df = pd.read_csv(pv_file_path, skiprows=0, decimal=",", sep=";", encoding="utf-8")
+        st.write(f"Anzahl Zeilen in df: {df.shape[0]}")
+        st.write(f"Spalten in df: {df.columns.tolist()}")
+
+        # Skaliere die PV-Norm-Spalten mit den jeweiligen Peak-Werten
+        factor_east=  options["pv_simulation"]["ost"] / df["PV_east_30_norm"].max()
+        factor_south= options["pv_simulation"]["sued"] / df["PV_south_30_norm"].max()
+        factor_west=  options["pv_simulation"]["west"] / df["PV_west_30_norm"].max()
+        # Addiere die Werte zu einer neuen Spalte "PV-Simulation"
+        df["kW"] = df["PV_east_30_norm"]*factor_east + df["PV_south_30_norm"]*factor_south + df["PV_west_30_norm"]*factor_west
+        df["datetime"] = pd.to_datetime(df["Date [UTC+1]"], format="%d.%m.%Y %H:%M")
+        df = df[["datetime", "kW"]]
+        # Erzeuge ein Datenbundle für die PV-Simulation
+        pv_bundle = Datenbundle(
+            df=df,
+            description=f"PV Simulation ({options['pv_simulation']['total']:.1f} kWp)",
+            interval=15,  # Passe ggf. das Intervall an
+            is_last=False,
+            is_erzeugung=True,
+            farbe="#AF9500"
+        )
+
+        bundles.append(pv_bundle)
+        timer("PV Simulationsdaten wurden geladen und skaliert", opt_timer)
+    else:
+        st.warning("PV Simulationsdatei nicht gefunden. Bitte sicherstellen, dass 'data/pv_simulation.csv' existiert.")
 
 
 

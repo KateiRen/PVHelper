@@ -1,6 +1,8 @@
 
 # Ignore directories with data files
 projects
+batteries
+reference
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

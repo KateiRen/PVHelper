@@ -93,6 +93,8 @@ projects/
   "Einheit": "kW",
   "Intervall": 15,
   "is_erzeugung": false,
+  "is_last": false,
+  "offset": 0,
   "Farbe": "#1f77b4"
 }
 ```
@@ -139,6 +141,7 @@ streamlit run pv_visualizer.py
 | `is_erzeugung` | Ist Erzeugungsdaten | `false` |
 | `is_last` | Ist Verbrauchsdaten | `false` |
 | `Invertiert` | Daten negieren | `false` |
+| `offset` | Zeitverschiebung in Intervallen | `0` |
 | `Farbe` | Hex-Farbe für Diagramme | `"#1f77b4"` |
 
 ### Skalierungsparameter (optional)
@@ -158,6 +161,22 @@ streamlit run pv_visualizer.py
 
 ### Mehrere PV-Anlagen vergleichen
 1. **Verschiedene JSON-Konfigurationen erstellen**
+2. **Gleichzeitig laden und vergleichen**
+3. **Skalierung für Normalisierung nutzen**
+
+### Zeitverschiebung mit offset
+Der `offset` Parameter ermöglicht es, Datenreihen zeitlich zu verschieben:
+```json
+{
+  "Name": "Einspeisung verschoben",
+  "offset": 7,
+  "Comment": "Verschiebt Werte um 7 Intervalle nach hinten"
+}
+```
+- **Positive Werte**: Daten werden nach hinten verschoben (spätere Zeitpunkte)
+- **Negative Werte**: Daten werden nach vorne verschoben (frühere Zeitpunkte)  
+- **Anwendung**: Korrektur von Messungenauigkeiten oder unterschiedlichen Aufzeichnungszeiten
+- **Beispiel**: `offset: 7` bei 15-Minuten-Intervallen = 1h 45min Verschiebung
 2. **Unterschiedliche Farben vergeben**
 3. **In analyze.py gleichzeitig laden**
 4. **Stärkste Perioden nach gewünschter Anlage analysieren**

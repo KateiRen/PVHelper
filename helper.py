@@ -6,6 +6,41 @@ import pandas as pd
 import time
 
 
+class BatteryStorage:
+    def _init_(self, config):
+        self.capacity_kwh = config['capacity_kwh']
+        self.self_discharge_rate = config['self_discharge_rate']
+        self.charge_efficiency = config['charge_efficiency']
+        self.discharge_efficiency = config['discharge_efficiency']
+        self.max_charge_power_kw = config['max_charge_power_kw']
+        self.max_discharge_power_kw = config['max_discharge_power_kw']
+        self.min_soc = config['min_soc']
+        self.soc_kwh = self.capacity_kwh * self.min_soc
+
+    def apply_self_discharge(self, hours=1):
+        loss = self.soc_kwh * self.self_discharge_rate * hours
+        self.soc_kwh = max(self.soc_kwh - loss, self.capacity_kwh * self.min_soc)
+
+    def charge(self, power_kw, duration_h):
+        power_kw = min(power_kw, self.max_charge_power_kw)
+        energy_in = power_kw * duration_h * self.charge_efficiency
+        available_capacity = self.capacity_kwh - self.soc_kwh
+        charged_energy = min(energy_in, available_capacity)
+        self.soc_kwh += charged_energy
+        return charged_energy
+
+    def discharge(self, power_kw, duration_h):
+        power_kw = min(power_kw, self.max_discharge_power_kw)
+        energy_out = power_kw * duration_h / self.discharge_efficiency
+        available_energy = self.soc_kwh - self.capacity_kwh * self.min_soc
+        discharged_energy = min(energy_out, available_energy)
+        self.soc_kwh -= discharged_energy
+        return discharged_energy * self.discharge_efficiency
+
+    def get_state_of_charge(self):
+        return self.soc_kwh / self.capacity_kwh
+
+
 @dataclass
 class Datenbundle:
     df: pd.DataFrame
