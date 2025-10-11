@@ -69,38 +69,39 @@ st.sidebar.markdown('---')
 with st.sidebar.expander("🌞 PV Simulation"):
     enable_pv_simulation = st.toggle("Simulation PV", value=False)
     
-    if enable_pv_simulation:
-        pv_west = st.number_input(
-            "West (kWp)", 
-            min_value=0.0, 
-            max_value=1000.0, 
-            value=0.0, 
-            step=0.1,
-            help="Installierte Leistung West-Ausrichtung"
-        )
-        pv_sued = st.number_input(
-            "Süd (kWp)", 
-            min_value=0.0, 
-            max_value=1000.0, 
-            value=0.0, 
-            step=0.1,
-            help="Installierte Leistung Süd-Ausrichtung"
-        )
-        pv_ost = st.number_input(
-            "Ost (kWp)", 
-            min_value=0.0, 
-            max_value=1000.0, 
-            value=0.0, 
-            step=0.1,
-            help="Installierte Leistung Ost-Ausrichtung"
-        )
-        
-        pv_total = pv_west + pv_sued + pv_ost
-        if pv_total > 0:
-            st.info(f"Gesamt: {pv_total:.1f} kWp")
-
-    else:
-        pv_west = pv_sued = pv_ost = 0.0
+    # Eingabefelder werden immer angezeigt, unabhängig vom Toggle
+    pv_west = st.number_input(
+        "West (kWp)", 
+        min_value=0.0, 
+        max_value=1000.0, 
+        value=0.0, 
+        step=0.1,
+        help="Installierte Leistung West-Ausrichtung",
+        disabled=not enable_pv_simulation
+    )
+    pv_sued = st.number_input(
+        "Süd (kWp)", 
+        min_value=0.0, 
+        max_value=1000.0, 
+        value=0.0, 
+        step=0.1,
+        help="Installierte Leistung Süd-Ausrichtung",
+        disabled=not enable_pv_simulation
+    )
+    pv_ost = st.number_input(
+        "Ost (kWp)", 
+        min_value=0.0, 
+        max_value=1000.0, 
+        value=0.0, 
+        step=0.1,
+        help="Installierte Leistung Ost-Ausrichtung",
+        disabled=not enable_pv_simulation
+    )
+    
+    pv_total = pv_west + pv_sued + pv_ost
+    if pv_total > 0:
+        status_text = "✅ Aktiviert" if enable_pv_simulation else "⚫ Deaktiviert"
+        st.info(f"Gesamt: {pv_total:.1f} kWp ({status_text})")
 
 st.sidebar.markdown('---')
 st.sidebar.subheader("🛠️ Optionen")
