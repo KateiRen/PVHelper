@@ -258,7 +258,7 @@ if options["pv_simulation"]["enabled"] and options["pv_simulation"]["total"] > 0
             with open(json_path, "w", encoding="utf-8") as f:
                 json.dump(json_config, f, indent=4, ensure_ascii=False)
             
-            st.success(f"✅ PV-Simulationsdaten gespeichert:")
+            st.success("✅ PV-Simulationsdaten gespeichert:")
             st.write(f"📄 CSV: `data/{csv_filename}`")
             st.write(f"⚙️ JSON: `{json_filename}`")
             
@@ -269,13 +269,18 @@ if options["pv_simulation"]["enabled"] and options["pv_simulation"]["total"] > 0
         st.warning("PV Simulationsdatei nicht gefunden. Bitte sicherstellen, dass 'data/pv_simulation.csv' existiert.")
 
 
-    # Lade Batterie-Konfiguration, wenn aktiviert und ausgewählt
-    battery_storage = None
-    if options["battery"]["enabled"] and options["battery"]["config_file"]:
-        with open(options["battery"]["config_path"], "r", encoding="utf-8") as f:
-            battery_config = yaml.safe_load(f)
-        battery_storage = BatteryStorage(**battery_config)
-        st.info(f"Batteriespeicher geladen: {battery_storage}")
+# Lade Batterie-Konfiguration, wenn aktiviert und ausgewählt
+battery = None
+if options["battery"]["enabled"] and options["battery"]["config_file"]:
+    with open(options["battery"]["config_path"], "r", encoding="utf-8") as f:
+        battery_config = yaml.safe_load(f)
+    battery = BatteryStorage(battery_config)
+#    for key, value in battery_config.items():
+#        setattr(battery, key, value)
+    # Zeige Batterie-Konfiguration, falls geladen
+    if battery is not None:
+        battery_info = {k: v for k, v in vars(battery).items() if not k.startswith('_')}
+        st.info(f"Batteriespeicher geladen:\n{json.dumps(battery_info, indent=2, ensure_ascii=False)}")
 
 
 
@@ -393,7 +398,8 @@ if len(bundles) > 0:
         st.dataframe(df_full)
     timer("Zeit für das Kombinieren und Darstellen des neuen Dataframes", opt_timer)
 
-    if opt_calc: # type: ignore
+    # Berechnungen ohne Batteriespeicher
+    if opt_calc and not options["battery"]["enabled"]: # type: ignore
         st.header("Berechnungen")
         # Summiere "Wert (kWh)" für alle Bundles mit is_last und is_erzeugung
         last_dfs = [b.df for b in bundles if b.is_last]
@@ -534,6 +540,64 @@ if len(bundles) > 0:
 
         else:
             st.info("Für die Berechnungen werden sowohl die 'Last'- als auch die 'Erzeugung'-Datenreihen benötigt.")
+
+
+    if opt_calc and options["battery"]["enabled"] and selected_battery != "Keine": # type: ignore
+        st.header("Berechnungen mit Batteriespeicher")
+        st.info("Die Berechnung mit Batteriespeicher ist noch in Arbeit und wird in einer zukünftigen Version verfügbar sein.")
+        # Hier würde die Logik für die Berechnung mit dem Batteriespeicher implementiert werden.
+        # Dies könnte die Simulation von Lade- und Entladezyklen basierend auf Last- und Erzeugungsdaten umfassen.
+        # Aktuell wird nur eine Info angezeigt.
+
+        # Initialisiere Speicherparameter EINMAL vor der Schleife
+        battery_capacity = getattr(battery, "capacity_kwh", 10)  # kWh, Default 10 falls nicht gesetzt
+        battery_soc = getattr(battery, "soc_init", 0.0) * battery_capacity  # Startwert in kWh
+        battery_charge_power = getattr(battery, "charge_power_kw", 3)  # kW
+        battery_discharge_power = getattr(battery, "discharge_power_kw", 3)  # kW
+        battery_efficiency = getattr(battery, "efficiency", 0.95)  # Wirkungsgrad
+
+        interval_hours = bundles[0].interval / 60  # z.B. 15min = 0.25h
+
+        # Iteriere über die Zeitreihe und simuliere den Batteriebetrieb
+        for index, row in df_full.iterrows():
+            # Hole Werte aus DataFrame, falls vorhanden, sonst 0
+            last = row.get("Last (kW)", 0)
+            erzeugung = row.get("Erzeugung (kW)", 0)
+
+            # PV-Erzeugung zuerst für Lastdeckung
+            pv_for_load = min(erzeugung, last)
+            rest_pv = max(erzeugung - last, 0)
+            rest_load = max(last - erzeugung, 0)
+
+            # Speicher laden mit überschüssiger PV (rest_pv)
+            max_charge = min(battery_charge_power * interval_hours, battery_capacity - battery_soc)
+            charge_amount = min(rest_pv * interval_hours, max_charge)
+            charge_amount_eff = charge_amount * battery_efficiency  # Wirkungsgrad beim Laden
+            battery_soc += charge_amount_eff
+            rest_pv -= charge_amount / interval_hours  # Restliche PV nach Ladung
+
+            # Speicher entladen für Lastdeckung (rest_load)
+            max_discharge = min(battery_discharge_power * interval_hours, battery_soc)
+            discharge_amount = min(rest_load * interval_hours, max_discharge)
+            discharge_amount_eff = discharge_amount * battery_efficiency  # Wirkungsgrad beim Entladen
+            battery_soc -= discharge_amount
+            rest_load -= discharge_amount / interval_hours  # Restliche Last nach Entladung
+
+            # Einspeisung: Restliche PV nach Speicherladung
+            einspeisung = max(rest_pv, 0)
+
+            # Fremdbezug: Restliche Last nach Speicherentladung
+            fremdbezug = max(rest_load, 0)
+
+            # Ergebnisse im DataFrame speichern
+            df_full.at[index, "Speicher SOC (kWh)"] = battery_soc
+            df_full.at[index, "Eigenverbrauch mit Speicher (kW)"] = pv_for_load + (discharge_amount / interval_hours)
+            df_full.at[index, "Einspeisung mit Speicher (kW)"] = einspeisung
+            df_full.at[index, "Fremdbezug mit Speicher (kW)"] = fremdbezug
+            df_full.at[index, "Speicher Ladung (kWh)"] = charge_amount
+            df_full.at[index, "Speicher Entladung (kWh)"] = discharge_amount
+
+        timer("Zeit nach dem Batteriespeicher-Berechnungsabschnitt", opt_timer)
 
 
     # Plotly line chart with multiple lines from individual columns

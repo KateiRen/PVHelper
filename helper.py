@@ -1,27 +1,54 @@
+"""import List, json, dataclass, streamlit as st, pandas as pd, time"""
 from typing import List
+import time
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import streamlit as st
 import pandas as pd
-import time
 
 
+
+@dataclass
 class BatteryStorage:
-    def _init_(self, config):
-        self.capacity_kwh = config['capacity_kwh']
-        self.self_discharge_rate = config['self_discharge_rate']
-        self.charge_efficiency = config['charge_efficiency']
-        self.discharge_efficiency = config['discharge_efficiency']
-        self.max_charge_power_kw = config['max_charge_power_kw']
-        self.max_discharge_power_kw = config['max_discharge_power_kw']
-        self.min_soc = config['min_soc']
-        self.soc_kwh = self.capacity_kwh * self.min_soc
+    """Simuliere ein Batteriespeichersystem"""
+    capacity_kwh: float = 100
+    self_discharge_rate: float = 0.0004
+    charge_efficiency: float = 0.95
+    discharge_efficiency: float = 0.9
+    max_charge_power_kw: float = 10
+    max_discharge_power_kw: float = 10
+    min_soc: float = 0.2
+    max_soc: float = 1.0
+    initial_soc: float = 0.5
+    soc_kwh: float = field(init=False)
+
+    def __init__(self, config: dict = None):
+        # Set defaults
+        self.capacity_kwh = 100
+        self.self_discharge_rate = 0.0004
+        self.charge_efficiency = 0.95
+        self.discharge_efficiency = 0.9
+        self.max_charge_power_kw = 10
+        self.max_discharge_power_kw = 10
+        self.min_soc = 0.2
+        self.max_soc = 1.0
+        self.initial_soc = 0.5
+
+        # Override with config if provided
+        if config:
+            for key, value in config.items():
+                if hasattr(self, key):
+                    setattr(self, key, value)
+
+        self.soc_kwh = self.capacity_kwh * self.initial_soc
 
     def apply_self_discharge(self, hours=1):
+        """Wende Selbstentladung über eine gegebene Anzahl von Stunden an"""
         loss = self.soc_kwh * self.self_discharge_rate * hours
         self.soc_kwh = max(self.soc_kwh - loss, self.capacity_kwh * self.min_soc)
 
     def charge(self, power_kw, duration_h):
+        """Lade die Batterie mit gegebener Leistung (kW) über eine Dauer (h)"""
         power_kw = min(power_kw, self.max_charge_power_kw)
         energy_in = power_kw * duration_h * self.charge_efficiency
         available_capacity = self.capacity_kwh - self.soc_kwh
@@ -30,6 +57,7 @@ class BatteryStorage:
         return charged_energy
 
     def discharge(self, power_kw, duration_h):
+        """Entlade die Batterie mit gegebener Leistung (kW) über eine Dauer (h)"""
         power_kw = min(power_kw, self.max_discharge_power_kw)
         energy_out = power_kw * duration_h / self.discharge_efficiency
         available_energy = self.soc_kwh - self.capacity_kwh * self.min_soc
@@ -38,11 +66,17 @@ class BatteryStorage:
         return discharged_energy * self.discharge_efficiency
 
     def get_state_of_charge(self):
+        """Gibt den aktuellen Ladezustand als Bruchteil (0-1) zurück"""
         return self.soc_kwh / self.capacity_kwh
+
+    def get_state_of_charge_kwh(self) -> float:
+        """Gibt den aktuellen Ladezustand in kWh zurück"""
+        return self.soc_kwh
 
 
 @dataclass
 class Datenbundle:
+    """Daten und Metadaten für eine Datenreihe"""
     df: pd.DataFrame
     description: str
     interval: int
@@ -53,12 +87,13 @@ class Datenbundle:
 
 @st.cache_data
 def read_csv_file(path: str, skiprows: int = 0, decimal: str = ",", sep: str = ";") -> pd.DataFrame:
+    """Lade CSV-Datei mit benutzerdefinierten Einstellungen"""
     df = pd.read_csv(path, skiprows=skiprows, decimal=decimal, sep=sep)
     return df
 
 @st.cache_data
 def read_csv_file2(df: pd.DataFrame, settings: dict, options: dict) -> pd.DataFrame:
-
+    """Lade CSV-Datei mit benutzerdefinierten Einstellungen"""
     df = pd.read_csv(settings['Datei'], skiprows=settings['Startzeile'], decimal=settings['Dezimaltrennzeichen'], sep=settings['Spaltentrennzeichen'])
 
     if settings.get('Invertiert', False):
@@ -78,6 +113,7 @@ def read_csv_file2(df: pd.DataFrame, settings: dict, options: dict) -> pd.DataFr
 
 
 def create_datetime_index(df: pd.DataFrame, settings: dict, options: dict) -> pd.DataFrame:
+    """Erstelle eine datetime-Spalte basierend auf den Einstellungen"""
     if options.get('etl_steps', False):
         st.write(f"Spalten im DataFrame: {list(df.columns)}")
     # Erstelle eine datetime-Spalte aus den vorhandenen Infos
@@ -110,6 +146,7 @@ def create_datetime_index(df: pd.DataFrame, settings: dict, options: dict) -> pd
 
 
 def check_and_fix_right_interval(df: pd.DataFrame, settings: dict, options: dict) -> pd.DataFrame:
+    """Überprüfe und korrigiere die Zeitintervalle im DataFrame."""
     # Rechtsbündige Zeitangaben auf Linksbündig shiften
     if settings['Intervall'] == 15 and df['datetime'].iloc[0].time() == pd.Timestamp("00:15:00").time():
         df['datetime'] = df['datetime'] - pd.Timedelta(minutes=15)
@@ -124,6 +161,7 @@ def check_and_fix_right_interval(df: pd.DataFrame, settings: dict, options: dict
 
 
 def check_rowcount(df: pd.DataFrame, settings: dict, options: dict) -> pd.DataFrame:
+    """Prüfe, ob die Anzahl der Zeilen zur Anzahl der Tage passt"""
     # Prüfe, ob die Anzahl der Zeilen zur Anzahl der Tage passt
     unique_days = df['datetime'].dt.date.nunique()
     if options.get('etl_steps', False):
@@ -165,6 +203,7 @@ def get_unique_kw_column_name(df: pd.DataFrame, base_name: str = "Wert-kW") -> s
 
 
 def check_and_convert_to_kW(df: pd.DataFrame, settings: dict, options: dict) -> pd.DataFrame:
+    """Überprüfe und konvertiere die Datenspalte in kW, falls nötig"""
     if settings['Einheit'].lower() == 'kw':
         if options.get('etl_steps', False):
             st.info("Daten sind bereits in kW")
@@ -200,6 +239,7 @@ def check_and_convert_to_kW(df: pd.DataFrame, settings: dict, options: dict) -> 
 
 
 def check_and_remove_leap_day(df: pd.DataFrame, settings: dict, options: dict) -> pd.DataFrame:
+    """Prüfe und entferne Daten für den 29. Februar (Schaltjahr)"""
     # Prüfe, ob es Daten für den 29. Februar gibt (Schaltjahr) und lösche diese Zeilen
     leap_day_mask = (df['datetime'].dt.month == 2) & (df['datetime'].dt.day == 29)
     if leap_day_mask.any():
@@ -211,6 +251,7 @@ def check_and_remove_leap_day(df: pd.DataFrame, settings: dict, options: dict) -
 
 
 def check_and_correct_continuity(df: pd.DataFrame, settings: dict, options: dict) -> pd.DataFrame:
+    """Prüfe, ob die Zeitstempel kontinuierlich sind und korrigiere sie bei Bedarf"""
     # Prüfe, ob die Zeitstempel kontinuierlich sind und ob Sommer-/Winterzeit-Umstellungen enthalten sind
     temp_df = pd.DataFrame()
     start = df['datetime'].min()
@@ -234,6 +275,7 @@ def check_and_correct_continuity(df: pd.DataFrame, settings: dict, options: dict
 
 
 def scale_dataframe(df: pd.DataFrame, settings: dict, options: dict) -> pd.DataFrame:
+    """Skaliere die Datenreihe auf den Zielgesamtwert (kWh) oder Zielspitzenwert (kW)"""
       # Skaliere die Datenreihe auf den Zielgesamtwert (kWh) oder Zielspitzenwert (kW)    
     if 'Zielgesamtwert' in settings and settings['Zielgesamtwert'] is not None:
         interval_hours = settings.get('Intervall', 15) / 60
@@ -260,6 +302,7 @@ def scale_dataframe(df: pd.DataFrame, settings: dict, options: dict) -> pd.DataF
 
 
 def show_dataframe_info(df: pd.DataFrame, col=None):
+    """Zeige grundlegende Informationen über den DataFrame an"""
     # Anzahl der gefundenen und geladenen Zeilen ausgeben
     st.markdown("**High-Level Analyse der Zeitstempel**")
     st.markdown(f"- Anzahl der geladenen Zeilen: {df.shape[0]}")
@@ -286,6 +329,7 @@ def show_dataframe_info(df: pd.DataFrame, col=None):
 # Hilfsfunktion: Aggregiert alle Bundles stündlich
 @st.cache_data
 def create_hourly_bundles(bundles: List[Datenbundle]) -> List[Datenbundle]:
+    """Aggregiere alle Datenbundles stündlich."""
     hourly_bundles = []
     for bundle in bundles:
         df = bundle.df.copy()
@@ -326,6 +370,7 @@ def create_hourly_bundles(bundles: List[Datenbundle]) -> List[Datenbundle]:
 # Hilfsfunktion: Aggregiert alle Bundles wochentagsweise (Mo-Fr)
 @st.cache_data
 def create_weekly_bundles(bundles: List[Datenbundle]) -> List[Datenbundle]:
+    """Aggregiere alle Datenbundles wochentagsweise (Mo-Fr)."""
     weekly_bundles = []
     for bundle in bundles:
         df = bundle.df.copy()
@@ -363,6 +408,7 @@ def create_weekly_bundles(bundles: List[Datenbundle]) -> List[Datenbundle]:
 # Hilfsfunktion: Aggregiert alle Bundles monatlich
 @st.cache_data
 def create_monthly_bundles(bundles: List[Datenbundle]) -> List[Datenbundle]:
+    """Aggregiere alle Datenbundles monatlich."""
     monthly_bundles = []
     for bundle in bundles:
         df = bundle.df.copy()
@@ -398,6 +444,7 @@ def create_monthly_bundles(bundles: List[Datenbundle]) -> List[Datenbundle]:
 
 
 def timer(description: str="", opt_timer: bool=False):
+    """Einfache Timer-Funktion zur Messung der Ausführungszeit von Codeabschnitten."""
     if not hasattr(timer, "last_time"):
         timer.last_time = time.time() # type: ignore
         if opt_timer:
