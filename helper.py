@@ -100,7 +100,7 @@ def read_csv_file2(df: pd.DataFrame, settings: dict, options: dict) -> pd.DataFr
         if options.get('etl_steps', False):
             st.warning("Daten werden invertiert (negativ)")
         df[settings['Datenspalte']] = -df[settings['Datenspalte']]
-    
+
     if settings.get('offset', 0) != 0:
         offset = settings['offset']
         if options.get('etl_steps', False):
@@ -193,12 +193,12 @@ def get_unique_kw_column_name(df: pd.DataFrame, base_name: str = "Wert-kW") -> s
     """
     if base_name not in df.columns:
         return base_name
-    
+
     # If base name exists, try with suffixes
     counter = 1
     while f"{base_name}_{counter}" in df.columns:
         counter += 1
-    
+
     return f"{base_name}_{counter}"
 
 
@@ -286,7 +286,7 @@ def scale_dataframe(df: pd.DataFrame, settings: dict, options: dict) -> pd.DataF
         df['kW'] = df['kW'] * scale_factor
         if options.get('etl_steps', False):
             show_dataframe_info(df, 'kW')
-        
+
     if 'Zielspitzenwert' in settings and settings['Zielspitzenwert'] is not None:
         interval_hours = settings.get('Intervall', 15) / 60
         current_kwh_total = (df['kW'] * interval_hours).sum()
@@ -337,10 +337,10 @@ def create_hourly_bundles(bundles: List[Datenbundle]) -> List[Datenbundle]:
         if 'datetime' not in df.columns:
             continue
         value_col = 'kW'
-            
+
         # Gruppiere nach Stunde
         df['hour'] = df['datetime'].dt.floor('h')
-        
+
         # For kW data, take mean; for kWh data, sum
         if value_col == 'kW':
             agg_df = df.groupby('hour', as_index=False).agg({
@@ -350,7 +350,7 @@ def create_hourly_bundles(bundles: List[Datenbundle]) -> List[Datenbundle]:
             agg_df = df.groupby('hour', as_index=False).agg({
                 value_col: 'sum',   # Sum energy over the hour
             })
-            
+
         # Übernehme weitere Metadaten
         agg_df['datetime'] = agg_df['hour']
         agg_df['name'] = bundle.description
@@ -377,10 +377,10 @@ def create_weekly_bundles(bundles: List[Datenbundle]) -> List[Datenbundle]:
         if 'datetime' not in df.columns:
             continue
         value_col = 'kW'
-                
+
         # Woche bestimmen: ISO-Woche (Montag bis Sonntag)
         df['week'] = df['datetime'].dt.to_period('W-MON').dt.start_time
-        
+
         # For kW data, take mean; for kWh data, sum
         if value_col == 'kW':
             agg_df = df.groupby('week', as_index=False).agg({
@@ -390,7 +390,7 @@ def create_weekly_bundles(bundles: List[Datenbundle]) -> List[Datenbundle]:
             agg_df = df.groupby('week', as_index=False).agg({
                 value_col: 'sum',   # Sum energy over the week
             })
-            
+
         agg_df['datetime'] = agg_df['week']
         agg_df['name'] = bundle.description
         weekly_bundle = Datenbundle(
@@ -415,10 +415,10 @@ def create_monthly_bundles(bundles: List[Datenbundle]) -> List[Datenbundle]:
         if 'datetime' not in df.columns:
             continue
         value_col = 'kW'
-            
+
         # Gruppiere nach Monat
         df['month'] = df['datetime'].dt.to_period('M').dt.to_timestamp()
-        
+
         # For kW data, take mean; for kWh data, sum
         if value_col == 'kW':
             agg_df = df.groupby('month', as_index=False).agg({
@@ -428,7 +428,7 @@ def create_monthly_bundles(bundles: List[Datenbundle]) -> List[Datenbundle]:
             agg_df = df.groupby('month', as_index=False).agg({
                 value_col: 'sum',   # Sum energy over the month
             })
-            
+
         agg_df['datetime'] = agg_df['month']
         agg_df['name'] = bundle.description
         monthly_bundle = Datenbundle(
@@ -501,7 +501,6 @@ def load_and_transform_data(config_path: str, options: dict) -> Datenbundle:
 #    if settings.get('Invertiert', False):
 #        st.warning("Daten werden invertiert (negativ)")
 #        df[settings['Datenspalte']] = -df[settings['Datenspalte']]
-#    
 #    if settings.get('offset', 0) != 0:
 #        offset = settings['offset']
 #        st.warning(f"Daten werden um {offset} Intervalle verschoben")
@@ -530,13 +529,13 @@ def load_and_transform_data(config_path: str, options: dict) -> Datenbundle:
 
     df = pd.DataFrame()  # Initialisiere df hier
     etl_steps = []  # Liste der durchgeführten ETL-Schritte
-    
+
     for job in jobs:
         step_name = job.__name__
         df = job(df, settings, options)
         timer(f"{step_name} abgeschlossen", options.get('timer', False))
         print(f"{step_name} abgeschlossen. Spalten: {list(df.columns)}")
-        
+
         # ETL-Schritt verfolgen
         etl_steps.append({
             "step": step_name,
@@ -544,14 +543,14 @@ def load_and_transform_data(config_path: str, options: dict) -> Datenbundle:
             "columns": list(df.columns) if not df.empty else [],
             "description": get_etl_step_description(step_name)
         })
-        
+
         if options.get('etl_steps', False):
             st.write(f"**ETL-Schritt:** {step_name}")
             st.write(f"  - Beschreibung: {get_etl_step_description(step_name)}")
             st.write(f"  - Resultat: {df.shape[0]} Zeilen, {df.shape[1]} Spalten")
             if not df.empty:
                 st.write(f"  - Spalten: {', '.join(df.columns)}")
-        
+
         if options.get('show_dataframe_infos', False):
             st.write(f"**Nach Schritt:** {get_etl_step_description(step_name)} - *{settings.get('Name', 'Unbekannte Datenreihe')}*")
             show_dataframe_infos = st.expander("ℹ️ Infos zum Dataframe")
