@@ -42,30 +42,32 @@ class BatteryStorage:
 
         self.soc_kwh = self.capacity_kwh * self.initial_soc
 
-    def apply_self_discharge(self, hours=1):
+    def apply_self_discharge(self, hours: float = 0.25) -> None:
         """Wende Selbstentladung über eine gegebene Anzahl von Stunden an"""
         loss = self.soc_kwh * self.self_discharge_rate * hours
         self.soc_kwh = max(self.soc_kwh - loss, self.capacity_kwh * self.min_soc)
 
-    def charge(self, power_kw, duration_h):
+    def charged(self, power_kw: float, duration_h: float) -> float:
         """Lade die Batterie mit gegebener Leistung (kW) über eine Dauer (h)"""
+        self.apply_self_discharge(duration_h)
         power_kw = min(power_kw, self.max_charge_power_kw)
         energy_in = power_kw * duration_h * self.charge_efficiency
         available_capacity = self.capacity_kwh - self.soc_kwh
         charged_energy = min(energy_in, available_capacity)
         self.soc_kwh += charged_energy
-        return charged_energy
+        return charged_energy / self.charge_efficiency
 
-    def discharge(self, power_kw, duration_h):
+    def discharged(self, power_kw: float, duration_h: float) -> float:
         """Entlade die Batterie mit gegebener Leistung (kW) über eine Dauer (h)"""
+        self.apply_self_discharge(duration_h)
         power_kw = min(power_kw, self.max_discharge_power_kw)
-        energy_out = power_kw * duration_h / self.discharge_efficiency
+        energy_out = power_kw * duration_h * self.discharge_efficiency
         available_energy = self.soc_kwh - self.capacity_kwh * self.min_soc
         discharged_energy = min(energy_out, available_energy)
         self.soc_kwh -= discharged_energy
-        return discharged_energy * self.discharge_efficiency
+        return discharged_energy / self.discharge_efficiency
 
-    def get_state_of_charge(self):
+    def get_state_of_charge(self) -> float:
         """Gibt den aktuellen Ladezustand als Bruchteil (0-1) zurück"""
         return self.soc_kwh / self.capacity_kwh
 
@@ -297,7 +299,6 @@ def scale_dataframe(df: pd.DataFrame, settings: dict, options: dict) -> pd.DataF
         df['kW'] = df['kW'] * scale_factor
         if options.get('etl_steps', False):
             show_dataframe_info(df, 'kW')
-        
     return df
 
 

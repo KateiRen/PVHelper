@@ -541,63 +541,115 @@ if len(bundles) > 0:
         else:
             st.info("Für die Berechnungen werden sowohl die 'Last'- als auch die 'Erzeugung'-Datenreihen benötigt.")
 
-
+    # Berechnungen mit Batteriespeicher
     if opt_calc and options["battery"]["enabled"] and selected_battery != "Keine": # type: ignore
-        st.header("Berechnungen mit Batteriespeicher")
-        st.info("Die Berechnung mit Batteriespeicher ist noch in Arbeit und wird in einer zukünftigen Version verfügbar sein.")
-        # Hier würde die Logik für die Berechnung mit dem Batteriespeicher implementiert werden.
-        # Dies könnte die Simulation von Lade- und Entladezyklen basierend auf Last- und Erzeugungsdaten umfassen.
-        # Aktuell wird nur eine Info angezeigt.
+        st.header("Berechnungen")
+        # Summiere "Wert (kWh)" für alle Bundles mit is_last und is_erzeugung
+        last_dfs = [b.df for b in bundles if b.is_last]
+        erzeugung_dfs = [b.df for b in bundles if b.is_erzeugung]
 
-        # Initialisiere Speicherparameter EINMAL vor der Schleife
-        battery_capacity = getattr(battery, "capacity_kwh", 10)  # kWh, Default 10 falls nicht gesetzt
-        battery_soc = getattr(battery, "soc_init", 0.0) * battery_capacity  # Startwert in kWh
-        battery_charge_power = getattr(battery, "charge_power_kw", 3)  # kW
-        battery_discharge_power = getattr(battery, "discharge_power_kw", 3)  # kW
-        battery_efficiency = getattr(battery, "efficiency", 0.95)  # Wirkungsgrad
+        if last_dfs:
+            last_df = pd.concat(last_dfs)
+            last_sum = last_df.groupby("datetime")["kW"].sum().reset_index()
+            # Sortiere nach datetime um korrekte Reihenfolge sicherzustellen
+            last_sum = last_sum.sort_values("datetime").reset_index(drop=True)
+            last_bundle = Datenbundle(
+                df=last_sum,
+                description="Last",
+                interval=0,
+                is_last=True,
+                is_erzeugung=False,
+                farbe="#1f77b4"
+            )
+            bundles.append(last_bundle)
 
-        interval_hours = bundles[0].interval / 60  # z.B. 15min = 0.25h
+        if erzeugung_dfs:
+            erzeugung_df = pd.concat(erzeugung_dfs)
+            erzeugung_sum = erzeugung_df.groupby("datetime")["kW"].sum().reset_index()
+            # Sortiere nach datetime um korrekte Reihenfolge sicherzustellen
+            erzeugung_sum = erzeugung_sum.sort_values("datetime").reset_index(drop=True)
+            erzeugung_bundle = Datenbundle(
+                df=erzeugung_sum,
+                description="Erzeugung",
+                interval=0,
+                is_last=False,
+                is_erzeugung=True,
+                farbe="#ff7f0e"
+            )
+            bundles.append(erzeugung_bundle)
 
-        # Iteriere über die Zeitreihe und simuliere den Batteriebetrieb
-        for index, row in df_full.iterrows():
-            # Hole Werte aus DataFrame, falls vorhanden, sonst 0
-            last = row.get("Last (kW)", 0)
-            erzeugung = row.get("Erzeugung (kW)", 0)
+        # Prüfe ob "Last" und "Erzeugung" Bundles existieren
+        last_bundle = next((b for b in bundles if b.description == "Last"), None)
+        erzeugung_bundle = next((b for b in bundles if b.description == "Erzeugung"), None)
 
-            # PV-Erzeugung zuerst für Lastdeckung
-            pv_for_load = min(erzeugung, last)
-            rest_pv = max(erzeugung - last, 0)
-            rest_load = max(last - erzeugung, 0)
+        if last_bundle is not None and erzeugung_bundle is not None:
+            # Merge nach datetime
+            merged = pd.merge(
+                last_bundle.df,
+                erzeugung_bundle.df,
+                on="datetime",
+                suffixes=("_Last", "_Erzeugung")
+            )            
 
-            # Speicher laden mit überschüssiger PV (rest_pv)
-            max_charge = min(battery_charge_power * interval_hours, battery_capacity - battery_soc)
-            charge_amount = min(rest_pv * interval_hours, max_charge)
-            charge_amount_eff = charge_amount * battery_efficiency  # Wirkungsgrad beim Laden
-            battery_soc += charge_amount_eff
-            rest_pv -= charge_amount / interval_hours  # Restliche PV nach Ladung
 
-            # Speicher entladen für Lastdeckung (rest_load)
-            max_discharge = min(battery_discharge_power * interval_hours, battery_soc)
-            discharge_amount = min(rest_load * interval_hours, max_discharge)
-            discharge_amount_eff = discharge_amount * battery_efficiency  # Wirkungsgrad beim Entladen
-            battery_soc -= discharge_amount
-            rest_load -= discharge_amount / interval_hours  # Restliche Last nach Entladung
+            st.header("Berechnungen mit Batteriespeicher")
+            st.info("Die Berechnung mit Batteriespeicher ist noch in Arbeit und wird in einer zukünftigen Version verfügbar sein.")
+            # Hier würde die Logik für die Berechnung mit dem Batteriespeicher implementiert werden.
+            # Dies könnte die Simulation von Lade- und Entladezyklen basierend auf Last- und Erzeugungsdaten umfassen.
+            # Aktuell wird nur eine Info angezeigt.
 
-            # Einspeisung: Restliche PV nach Speicherladung
-            einspeisung = max(rest_pv, 0)
 
-            # Fremdbezug: Restliche Last nach Speicherentladung
-            fremdbezug = max(rest_load, 0)
+            interval_hours = bundles[0].interval / 60  # z.B. 15min = 0.25h
 
-            # Ergebnisse im DataFrame speichern
-            df_full.at[index, "Speicher SOC (kWh)"] = battery_soc
-            df_full.at[index, "Eigenverbrauch mit Speicher (kW)"] = pv_for_load + (discharge_amount / interval_hours)
-            df_full.at[index, "Einspeisung mit Speicher (kW)"] = einspeisung
-            df_full.at[index, "Fremdbezug mit Speicher (kW)"] = fremdbezug
-            df_full.at[index, "Speicher Ladung (kWh)"] = charge_amount
-            df_full.at[index, "Speicher Entladung (kWh)"] = discharge_amount
+            # Iteriere über die Zeitreihe und simuliere den Batteriebetrieb
+            for index, row in merged.iterrows():
+                # Hole Werte aus DataFrame, falls vorhanden, sonst 0
+                last = row.get("kW_Last", 0)
+                erzeugung = row.get("kW_Erzeugung", 0)
 
-        timer("Zeit nach dem Batteriespeicher-Berechnungsabschnitt", opt_timer)
+                # Initialisiere Variablen
+                charge_amount = 0
+                discharge_amount = 0
+                einspeisung = 0
+                fremdbezug = 0
+
+                # PV-Erzeugung zuerst für Lastdeckung
+                pv_for_load = min(erzeugung, last)
+                rest_pv = max(erzeugung - last, 0)
+                rest_load = max(last - erzeugung, 0)
+
+                if erzeugung > last:
+                    # Überschüssige PV-Energie vorhanden - Batterie laden
+                    charge_amount = battery.charged(rest_pv, interval_hours)
+                    einspeisung = rest_pv - charge_amount  # Restliche PV nach Ladung
+                elif last > erzeugung:
+                    # Zusätzliche Last - Batterie entladen
+                    discharge_amount = battery.discharged(rest_load, interval_hours)
+                    fremdbezug = rest_load - discharge_amount   # Restliche Last nach Entladung
+
+
+                battery_soc = battery.get_state_of_charge_kwh()
+
+
+                # Ergebnisse im DataFrame speichern
+                df_full.at[index, "Speicher SOC (kWh)"] = battery_soc
+                df_full.at[index, "Eigenverbrauch mit Speicher (kW)"] = pv_for_load + (discharge_amount / interval_hours)
+                df_full.at[index, "Einspeisung mit Speicher (kW)"] = einspeisung
+                df_full.at[index, "Fremdbezug mit Speicher (kW)"] = fremdbezug
+                df_full.at[index, "Speicher Ladung (kW)"] = charge_amount * interval_hours
+                df_full.at[index, "Speicher Entladung (kW)"] = discharge_amount * interval_hours
+
+            timer("Zeit nach dem Batteriespeicher-Berechnungsabschnitt", opt_timer)
+
+
+
+        else:
+            st.info("Für die Berechnungen mit Batteriespeicher werden sowohl die 'Last'- als auch die 'Erzeugung'-Datenreihen benötigt.")
+            st.stop()
+
+
+
+ 
 
 
     # Plotly line chart with multiple lines from individual columns
