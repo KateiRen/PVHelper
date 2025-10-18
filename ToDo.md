@@ -7,6 +7,7 @@ https://www.epexspot.com/en/market-results?market_area=DE-LU&auction=MRC&trading
 https://api-portal.netztransparenz.de/api-documentation
 
 
+
 ## helper.py
 
 - [ ] weekly aggregate using mean?!
@@ -38,7 +39,18 @@ https://api-portal.netztransparenz.de/api-documentation
 - [ ] weitere funktionen nach helper.py verlagern
 - [ ] einfachere und klarere Struktur
 - [ ] Daten auf Stundenbasis unterstützen
-- [ ] Implementierung der Simulation des Stromspeichers, d.h. Berechnung Ladung, Entnahme, Selbstentladung als eigene Datenreihe und entsprechende Anpassung von Eigenverbrauch, Einspeisung, Fremdbezug und der Diagramme
+- [x] Implementierung der Simulation des Stromspeichers, d.h. Berechnung Ladung, Entnahme, Selbstentladung als eigene Datenreihe und entsprechende Anpassung von Eigenverbrauch, Einspeisung, Fremdbezug und der Diagramme
+    obere LAdegrenze! -> done
+    Discharge Power / Charge Power Korrekt angewendet?
+        Entladung von 100kWh mit 100KW
+            1. von 100 kWh auf 76,2375 kWh
+            2. von 76,2375 kWh 52,47797 kWh
+            3. auf 28,72141 kWh
+            Wirkungsgrad scheint umgekehrt zu wirken. Weniger Entladung als Abgabe
+    Plausi check Ladung / Entladung
+        Leistung
+        Kapazität
+
 
 ### 🏗️ Architektur & Wartbarkeit
 - [ ] **Modularisierung**: Große Funktionen in kleinere, testbare Einheiten aufteilen
